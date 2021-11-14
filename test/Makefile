@@ -44,16 +44,20 @@ clean:
 agclean: clean
 	rm -f f1-* f2-*
 
+# nachos 库中有 start.o
 $(NLIB): $(patsubst %,$(NLIB)(%.o),$(LIB)) start.o
 	$(RANLIB) $(NLIB)
 
+# 把 start.s 汇编为 start.o
 start.o: start.s syscall.h
 	$(CPP) $(CPPFLAGS) start.s > strt.s
 	$(AS) $(ASFLAGS) -o start.o strt.s
 	rm strt.s
 
+# 从 c 编译为 o
 %.o: %.c *.h
 	$(CC) $(CFLAGS) -c $<
 
+# 从 .o 和 nachos库链接为 .coff
 %.coff: %.o $(NLIB)
 	$(LD) $(LDFLAGS) -o $@ $< start.o -lnachos

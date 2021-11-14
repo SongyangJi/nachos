@@ -2,10 +2,13 @@ package nachos.threads;
 
 import nachos.machine.*;
 
+import java.util.LinkedList;
+import java.util.List;
+
 /**
  * A KThread is a thread that can be used to execute Nachos kernel code. Nachos
  * allows multiple threads to run concurrently.
- *
+ * <p>
  * To create a new thread of execution, first declare a class that implements
  * the <tt>Runnable</tt> interface. That class then implements the <tt>run</tt>
  * method. An instance of the class can then be allocated, passed as an
@@ -31,87 +34,93 @@ public class KThread {
     /**
      * Get the current thread.
      *
-     * @return	the current thread.
+     * @return the current thread.
      */
     public static KThread currentThread() {
-	Lib.assertTrue(currentThread != null);
-	return currentThread;
+        Lib.assertTrue(currentThread != null);
+        return currentThread;
     }
-    
+
     /**
      * Allocate a new <tt>KThread</tt>. If this is the first <tt>KThread</tt>,
      * create an idle thread as well.
      */
     public KThread() {
-	if (currentThread != null) {
-	    tcb = new TCB();
-	}	    
-	else {
-	    readyQueue = ThreadedKernel.scheduler.newThreadQueue(false);
-	    readyQueue.acquire(this);	    
+        if (currentThread != null) {
+            tcb = new TCB();
+        } else {
+            readyQueue = ThreadedKernel.scheduler.newThreadQueue(false).setName("readyQueue");
+            readyQueue.acquire(this);
 
-	    currentThread = this;
-	    tcb = TCB.currentTCB();
-	    name = "main";
-	    restoreState();
+            currentThread = this;
+            tcb = TCB.currentTCB(); // 也正就是 Machine类在main方法里new的TCB
+//            System.out.println("tcb : "+tcb);
+            name = "KThread main";
+            System.out.println("current KThread is " + name);
+            System.out.println("current java Thread is " + Thread.currentThread().getName());
 
-	    createIdleThread();
-	}
+            restoreState();
+
+            // 创建 do nothing 的 idle 线程，这个懒惰线程存在的目的是保证系统时钟的前进
+            // 当所有的内核线程都陷入等待时（也就是就绪队列上没有内核线程时），
+            // nacho 便会调度这个懒惰线程。
+            createIdleThread();
+        }
     }
 
     /**
      * Allocate a new KThread.
      *
-     * @param	target	the object whose <tt>run</tt> method is called.
+     * @param target the object whose <tt>run</tt> method is called.
      */
     public KThread(Runnable target) {
-	this();
-	this.target = target;
+        this();
+        this.target = target;
     }
 
     /**
      * Set the target of this thread.
      *
-     * @param	target	the object whose <tt>run</tt> method is called.
-     * @return	this thread.
+     * @param target the object whose <tt>run</tt> method is called.
+     * @return this thread.
      */
     public KThread setTarget(Runnable target) {
-	Lib.assertTrue(status == statusNew);
-	
-	this.target = target;
-	return this;
+        Lib.assertTrue(status == statusNew);
+
+        this.target = target;
+        return this;
     }
 
     /**
      * Set the name of this thread. This name is used for debugging purposes
      * only.
      *
-     * @param	name	the name to give to this thread.
-     * @return	this thread.
+     * @param name the name to give to this thread.
+     * @return this thread.
      */
     public KThread setName(String name) {
-	this.name = name;
-	return this;
+        this.name = name;
+        return this;
     }
 
     /**
      * Get the name of this thread. This name is used for debugging purposes
      * only.
      *
-     * @return	the name given to this thread.
-     */     
+     * @return the name given to this thread.
+     */
     public String getName() {
-	return name;
+        return name;
     }
 
     /**
      * Get the full name of this thread. This includes its name along with its
      * numerical ID. This name is used for debugging purposes only.
      *
-     * @return	the full name given to this thread.
+     * @return the full name given to this thread.
      */
     public String toString() {
-	return (name + " (#" + id + ")");
+        return (name + " (#" + id + ")");
     }
 
     /**
@@ -119,14 +128,14 @@ public class KThread {
      * thread.
      */
     public int compareTo(Object o) {
-	KThread thread = (KThread) o;
+        KThread thread = (KThread) o;
 
-	if (id < thread.id)
-	    return -1;
-	else if (id > thread.id)
-	    return 1;
-	else
-	    return 0;
+        if (id < thread.id)
+            return -1;
+        else if (id > thread.id)
+            return 1;
+        else
+            return 0;
     }
 
     /**
@@ -136,65 +145,78 @@ public class KThread {
      * its target's <tt>run</tt> method).
      */
     public void fork() {
-	Lib.assertTrue(status == statusNew);
-	Lib.assertTrue(target != null);
-	
-	Lib.debug(dbgThread,
-		  "Forking thread: " + toString() + " Runnable: " + target);
+        Lib.assertTrue(status == statusNew);
+        Lib.assertTrue(target != null);
 
-	boolean intStatus = Machine.interrupt().disable();
+        Lib.debug(dbgThread,
+                "Forking thread: " + toString() + " Runnable: " + target);
 
-	tcb.start(new Runnable() {
-		public void run() {
-		    runThread();
-		}
-	    });
+        // todo 关中断
+        boolean intStatus = Machine.interrupt().disable();
 
-	ready();
-	
-	Machine.interrupt().restore(intStatus);
+        tcb.start(new Runnable() {
+            public void run() {
+                // runThread() 方法仅在此处调用
+                runThread();
+            }
+        });
+        // 将此线程移动到就绪状态并将其添加到调度程序的就绪队列中
+        ready();
+
+        // todo 开中断
+        Machine.interrupt().restore(intStatus);
     }
 
     private void runThread() {
-	begin();
-	target.run();
-	finish();
+        begin();
+        target.run();
+        finish();
     }
 
     private void begin() {
-	Lib.debug(dbgThread, "Beginning thread: " + toString());
-	
-	Lib.assertTrue(this == currentThread);
+        Lib.debug(dbgThread, "Beginning thread: " + toString());
 
-	restoreState();
+        Lib.assertTrue(this == currentThread);
 
-	Machine.interrupt().enable();
+        restoreState();
+
+        // todo 开中断 ?（目前在该类中仅看到这一次开中断）
+        Machine.interrupt().enable();
     }
 
     /**
      * Finish the current thread and schedule it to be destroyed when it is
      * safe to do so. This method is automatically called when a thread's
      * <tt>run</tt> method returns, but it may also be called directly.
-     *
+     * <p>
      * The current thread cannot be immediately destroyed because its stack and
      * other execution state are still in use. Instead, this thread will be
      * destroyed automatically by the next thread to run, when it is safe to
      * delete this thread.
      */
     public static void finish() {
-	Lib.debug(dbgThread, "Finishing thread: " + currentThread.toString());
-	
-	Machine.interrupt().disable();
+        Lib.debug(dbgThread, "Finishing thread: " + currentThread.toString());
 
-	Machine.autoGrader().finishingCurrentThread();
+        Machine.interrupt().disable();
 
-	Lib.assertTrue(toBeDestroyed == null);
-	toBeDestroyed = currentThread;
+        Machine.autoGrader().finishingCurrentThread();
+
+        Lib.assertTrue(toBeDestroyed == null);
+        toBeDestroyed = currentThread;
 
 
-	currentThread.status = statusFinished;
-	
-	sleep();
+        currentThread.status = statusFinished;
+
+        // 将等待此内核线程终结的线程唤醒，加入ready队列
+        ThreadQueue waitQueue = currentThread.waitMeFinishThreadsQueue;
+        if (waitQueue != null) {
+            KThread nextWakeThread;
+            while ((nextWakeThread = waitQueue.nextThread()) != null) {
+                nextWakeThread.ready();
+            }
+        }
+
+        sleep(); // 目前不能立即删除此线程
     }
 
     /**
@@ -214,17 +236,19 @@ public class KThread {
      * called with interrupts disabled.
      */
     public static void yield() {
-	Lib.debug(dbgThread, "Yielding thread: " + currentThread.toString());
-	
-	Lib.assertTrue(currentThread.status == statusRunning);
-	
-	boolean intStatus = Machine.interrupt().disable();
+        Lib.debug(dbgThread, "Yielding thread: " + currentThread.toString());
 
-	currentThread.ready();
+        Lib.assertTrue(currentThread.status == statusRunning);
 
-	runNextThread();
-	
-	Machine.interrupt().restore(intStatus);
+        // todo 为什么要先关中断？
+        boolean intStatus = Machine.interrupt().disable();
+
+        currentThread.ready();
+
+        runNextThread();
+
+        // 恢复之前的中断状态
+        Machine.interrupt().restore(intStatus);
     }
 
     /**
@@ -239,14 +263,16 @@ public class KThread {
      * scheduled this thread to be destroyed by the next thread to run.
      */
     public static void sleep() {
-	Lib.debug(dbgThread, "Sleeping thread: " + currentThread.toString());
-	
-	Lib.assertTrue(Machine.interrupt().disabled());
+        Lib.debug(dbgThread, "Sleeping thread: " + currentThread.toString());
 
-	if (currentThread.status != statusFinished)
-	    currentThread.status = statusBlocked;
+        // todo 当前必屏蔽了中断
+        Lib.assertTrue(Machine.interrupt().disabled());
 
-	runNextThread();
+        if (currentThread.status != statusFinished)
+            currentThread.status = statusBlocked;
+
+        // 放弃 CPU，因为当前线程要么已经完成，要么被阻塞。
+        runNextThread();
     }
 
     /**
@@ -254,16 +280,17 @@ public class KThread {
      * ready queue.
      */
     public void ready() {
-	Lib.debug(dbgThread, "Ready thread: " + toString());
-	
-	Lib.assertTrue(Machine.interrupt().disabled());
-	Lib.assertTrue(status != statusReady);
-	
-	status = statusReady;
-	if (this != idleThread)
-	    readyQueue.waitForAccess(this);
-	
-	Machine.autoGrader().readyThread(this);
+        Lib.debug(dbgThread, "Ready thread: " + toString());
+        // todo 当前必屏蔽了中断
+        Lib.assertTrue(Machine.interrupt().disabled());
+        Lib.assertTrue(status != statusReady);
+
+        status = statusReady;
+        if (this != idleThread)
+            // 将此线程加入 ready 队列，等待调度
+            readyQueue.waitForAccess(this);
+
+        Machine.autoGrader().readyThread(this);
     }
 
     /**
@@ -273,9 +300,22 @@ public class KThread {
      * thread.
      */
     public void join() {
-	Lib.debug(dbgThread, "Joining to thread: " + toString());
+        Lib.debug(dbgThread, "Joining to thread: " + toString());
 
-	Lib.assertTrue(this != currentThread);
+        Lib.assertTrue(this != currentThread);
+        // 开关中断的处理逻辑类似于 yield
+        boolean intStatus = Machine.interrupt().disable();
+
+        // 延迟初始化
+        if (waitMeFinishThreadsQueue == null) {
+            this.waitMeFinishThreadsQueue = ThreadedKernel.scheduler.newThreadQueue(true);
+            waitMeFinishThreadsQueue.acquire(currentThread);
+        }
+
+        waitMeFinishThreadsQueue.waitForAccess(currentThread);
+        sleep();
+
+        Machine.interrupt().restore(intStatus);
 
     }
 
@@ -289,28 +329,34 @@ public class KThread {
      * Note that <tt>ready()</tt> never adds the idle thread to the ready set.
      */
     private static void createIdleThread() {
-	Lib.assertTrue(idleThread == null);
-	
-	idleThread = new KThread(new Runnable() {
-	    public void run() { while (true) yield(); }
-	});
-	idleThread.setName("idle");
+        Lib.assertTrue(idleThread == null);
 
-	Machine.autoGrader().setIdleThread(idleThread);
-	
-	idleThread.fork();
+        idleThread = new KThread(new Runnable() {
+            public void run() {
+                while (true) KThread.yield();
+            }
+        });
+
+        System.out.println("idleThread is " + idleThread.name);
+
+        idleThread.setName("idle");
+
+        Machine.autoGrader().setIdleThread(idleThread);
+
+        idleThread.fork();
     }
-    
+
     /**
      * Determine the next thread to run, then dispatch the CPU to the thread
      * using <tt>run()</tt>.
      */
     private static void runNextThread() {
-	KThread nextThread = readyQueue.nextThread();
-	if (nextThread == null)
-	    nextThread = idleThread;
+        KThread nextThread = readyQueue.nextThread();
+        if (nextThread == null)
+            nextThread = idleThread;
 
-	nextThread.run();
+        // run() 仅在此处调用
+        nextThread.run();
     }
 
     /**
@@ -328,26 +374,24 @@ public class KThread {
      * The state of the previously running thread must already have been
      * changed from running to blocked or ready (depending on whether the
      * thread is sleeping or yielding).
-     *
-     * @param	finishing	<tt>true</tt> if the current thread is
-     *				finished, and should be destroyed by the new
-     *				thread.
      */
     private void run() {
-	Lib.assertTrue(Machine.interrupt().disabled());
+        // todo 当前必屏蔽了中断
+        Lib.assertTrue(Machine.interrupt().disabled());
 
-	Machine.yield();
+        Machine.yield();
 
-	currentThread.saveState();
+        currentThread.saveState();
 
-	Lib.debug(dbgThread, "Switching from: " + currentThread.toString()
-		  + " to: " + toString());
+        Lib.debug(dbgThread, "Switching from: " + currentThread.toString()
+                + " to: " + toString());
 
-	currentThread = this;
+        currentThread = this; // 当前 thread 成为 currentThread
 
-	tcb.contextSwitch();
+        // tcb 上下文切换，对应的内核线程得到调度
+        tcb.contextSwitch();
 
-	currentThread.restoreState();
+        currentThread.restoreState();
     }
 
     /**
@@ -355,21 +399,22 @@ public class KThread {
      * <tt>statusRunning</tt> and check <tt>toBeDestroyed</tt>.
      */
     protected void restoreState() {
-	Lib.debug(dbgThread, "Running thread: " + currentThread.toString());
-	
-	Lib.assertTrue(Machine.interrupt().disabled());
-	Lib.assertTrue(this == currentThread);
-	Lib.assertTrue(tcb == TCB.currentTCB());
+        Lib.debug(dbgThread, "Running thread: " + currentThread.toString());
+        // todo 当前必屏蔽了中断
+        Lib.assertTrue(Machine.interrupt().disabled());
+        Lib.assertTrue(this == currentThread);
+        Lib.assertTrue(tcb == TCB.currentTCB());
 
-	Machine.autoGrader().runningThread(this);
-	
-	status = statusRunning;
+        Machine.autoGrader().runningThread(this);
 
-	if (toBeDestroyed != null) {
-	    toBeDestroyed.tcb.destroy();
-	    toBeDestroyed.tcb = null;
-	    toBeDestroyed = null;
-	}
+        status = statusRunning;
+
+        // destroy toBeDestroyed
+        if (toBeDestroyed != null) {
+            toBeDestroyed.tcb.destroy();
+            toBeDestroyed.tcb = null;
+            toBeDestroyed = null;
+        }
     }
 
     /**
@@ -377,45 +422,205 @@ public class KThread {
      * need to do anything here.
      */
     protected void saveState() {
-	Lib.assertTrue(Machine.interrupt().disabled());
-	Lib.assertTrue(this == currentThread);
+        // todo 当前必屏蔽了中断
+        Lib.assertTrue(Machine.interrupt().disabled());
+        Lib.assertTrue(this == currentThread);
     }
 
     private static class PingTest implements Runnable {
-	PingTest(int which) {
-	    this.which = which;
-	}
-	
-	public void run() {
-	    for (int i=0; i<5; i++) {
-		System.out.println("*** thread " + which + " looped "
-				   + i + " times");
-		currentThread.yield();
-	    }
-	}
+        PingTest(int which) {
+            this.which = which;
+        }
 
-	private int which;
+        public void run() {
+            System.out.println("current thread wait for a while first ...");
+            ThreadedKernel.alarm.waitUntil(10 * 200);
+            System.out.println("current thread waiting finished..");
+
+            for (int i = 0; i < 5; i++) {
+//                System.out.println("current : " + Thread.currentThread().getName());
+                System.out.println("*** thread " + which + " looped "
+                        + i + " times");
+                KThread.yield();
+            }
+        }
+
+        private final int which;
+    }
+
+    private static void setPriority(KThread thread, int priority) {
+        boolean inStatus = Machine.interrupt().disable();
+        ThreadedKernel.scheduler.setPriority(thread, priority);
+        Machine.interrupt().restore(inStatus);
+    }
+
+    private static void doIdleWork() {
+        System.out.println(KThread.currentThread.getName() + " 开始工作");
+        for (int i = 0; i < 1000000; i++) {
+            KThread.yield();
+//            System.out.println(KThread.currentThread.getName() + " 正在工作~" + i);
+        }
+        System.out.println(KThread.currentThread.getName() + " finished...");
+    }
+
+
+    public static void priorityInheritanceTest() {
+
+        System.out.println("\nto priorityInheritanceTest\n");
+
+        Lock lock = new Lock();
+
+        KThread kThread2 = new KThread(new Runnable() {
+            @Override
+            public void run() {
+                System.out.println(KThread.currentThread.getName() + " 开始工作");
+                lock.acquire();
+                System.out.println("线程2加锁");
+
+
+                KThread kThread3 = new KThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        doIdleWork();
+                    }
+                }).setName("优先级-3的线程");
+
+                KThread kThread4 = new KThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        doIdleWork();
+                    }
+                }).setName("优先级-4的线程");
+
+
+                KThread kThread7 = new KThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        System.out.println("线程7尝试加锁");
+                        lock.acquire();
+                        System.out.println("线程7获取到锁");
+                        lock.release();
+
+
+                        doIdleWork();
+                    }
+                }).setName("优先级-7的线程");
+
+                setPriority(kThread3, 3);
+                setPriority(kThread4, 4);
+                setPriority(kThread7, 7);
+
+                kThread3.fork();
+                kThread4.fork();
+                kThread7.fork();
+
+                for (int i = 0; i < 1000000; i++) {
+                    if (i == 500000) {
+                        System.out.println(KThread.currentThread.getName() + " 释放锁");
+                        lock.release();
+                    }
+                    KThread.yield();
+//                    System.out.println(KThread.currentThread.getName() + " 正在工作~" + i);
+//                    System.out.println("它的有效优先级为： "+ThreadedKernel.scheduler.getEffectivePriority());
+                }
+                System.out.println(KThread.currentThread.getName() + " finished...");
+            }
+        }).setName("优先级-2的线程");
+
+        setPriority(kThread2, 2);
+        kThread2.fork();
+
+        KThread.yield();
+
+    }
+
+    public static void priorityScheduleTest() {
+        System.out.println("\nto PriorityScheduleTest\n");
+
+        KThread thread2 = new KThread(new Runnable() {
+            @Override
+            public void run() {
+                doIdleWork();
+            }
+        }).setName("优先级-2的线程");
+
+
+        KThread thread3 = new KThread(new Runnable() {
+            @Override
+            public void run() {
+                doIdleWork();
+            }
+        }).setName("优先级-3的线程");
+
+        KThread thread4 = new KThread(new Runnable() {
+            @Override
+            public void run() {
+                System.out.println(KThread.currentThread.getName() + " 开始工作");
+                for (int i = 0; i < 1000000; i++) {
+                    if (i == 500000) {
+                        System.out.print(KThread.currentThread.getName() + "修改自身的优先级为 " + 1);
+                        setPriority(KThread.currentThread(), 1);
+                        System.out.println("，并且修改 " + thread3.getName() + " 的优先级为" + 7);
+                        setPriority(thread3, 7);
+                    }
+                    KThread.yield();
+                }
+                System.out.println(KThread.currentThread.getName() + " finished...");
+            }
+        }).setName("优先级-4的线程");
+
+        setPriority(thread2, 2);
+        setPriority(thread3, 3);
+        setPriority(thread4, 4);
+
+        thread2.fork();
+        thread3.fork();
+        thread4.fork();
+
+
+        setPriority(KThread.currentThread(), 0);
+        KThread.yield();
+
+    }
+
+    public static void idleTest() {
+        new KThread(new Runnable() {
+            @Override
+            public void run() {
+                while (true) ;
+            }
+        }).setName("test-idle").fork();
     }
 
     /**
      * Tests whether this module is working.
      */
     public static void selfTest() {
-	Lib.debug(dbgThread, "Enter KThread.selfTest");
-	
-	new KThread(new PingTest(1)).setName("forked thread").fork();
-	new PingTest(0).run();
+        Lib.debug(dbgThread, "Enter KThread.selfTest");
+
+        System.out.println("\nto KThreadTest here\n");
+
+        KThread thread1 = new KThread(new PingTest(1)).setName("forked thread");
+        thread1.fork();
+
+        thread1.join();
+
+        new PingTest(0).run();
     }
+
 
     private static final char dbgThread = 't';
 
     /**
      * Additional state used by schedulers.
      *
-     * @see	nachos.threads.PriorityScheduler.ThreadState
+     * @see nachos.threads.PriorityScheduler.ThreadState
      */
     public Object schedulingState = null;
 
+    /**
+     * 进程的状态枚举量
+     */
     private static final int statusNew = 0;
     private static final int statusReady = 1;
     private static final int statusRunning = 2;
@@ -433,15 +638,21 @@ public class KThread {
     private TCB tcb;
 
     /**
-     * Unique identifer for this thread. Used to deterministically compare
+     * Unique identifier for this thread. Used to deterministically compare
      * threads.
      */
-    private int id = numCreated++;
-    /** Number of times the KThread constructor was called. */
+    private final int id = numCreated++;
+    /**
+     * Number of times the KThread constructor was called.
+     */
     private static int numCreated = 0;
 
     private static ThreadQueue readyQueue = null;
     private static KThread currentThread = null;
     private static KThread toBeDestroyed = null;
     private static KThread idleThread = null;
+
+    // join 的实现 from jsy
+    ThreadQueue waitMeFinishThreadsQueue = null;
+
 }

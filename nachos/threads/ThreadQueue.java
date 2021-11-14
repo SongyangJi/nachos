@@ -27,7 +27,7 @@ package nachos.threads;
  * are not allowed to return from <tt>join()</tt> until the target thread has
  * finished.
  * </ol>
- *
+ * <p>
  * All these cases involve limited access because, for each of them, it is not
  * necessarily possible (or correct) for all the threads to have simultaneous
  * access. Some of these cases involve concrete resources (e.g. the processor,
@@ -38,6 +38,9 @@ package nachos.threads;
  * All thread queue methods must be invoked with <b>interrupts disabled</b>.
  */
 public abstract class ThreadQueue {
+
+    protected String name = "unnamed";
+
     /**
      * Notify this thread queue that the specified thread is waiting for
      * access. This method should only be called if the thread cannot
@@ -57,7 +60,7 @@ public abstract class ThreadQueue {
      * another lock. Note, though, that the processor cannot be held while
      * waiting for access to anything else.
      *
-     * @param	thread	the thread waiting for access.
+     * @param thread the thread waiting for access.
      */
     public abstract void waitForAccess(KThread thread);
 
@@ -71,8 +74,8 @@ public abstract class ThreadQueue {
      * threads waiting for access, then they will donate priority to the
      * returned thread.
      *
-     * @return	the next thread to receive access, or <tt>null</tt> if there
-     *		are no threads waiting.
+     * @return the next thread to receive access, or <tt>null</tt> if there
+     * are no threads waiting.
      */
     public abstract KThread nextThread();
 
@@ -86,8 +89,8 @@ public abstract class ThreadQueue {
      * This method should not be called for a thread returned from
      * <tt>nextThread()</tt>.
      *
-     * @param	thread	the thread that has received access, but was not
-     * 			returned from <tt>nextThread()</tt>.
+     * @param thread the thread that has received access, but was not
+     *               returned from <tt>nextThread()</tt>.
      */
     public abstract void acquire(KThread thread);
 
@@ -95,4 +98,14 @@ public abstract class ThreadQueue {
      * Print out all the threads waiting for access, in no particular order.
      */
     public abstract void print();
+
+    /**
+     * 用于 debug
+     *
+     * @param name 队列的名字
+     */
+    public ThreadQueue setName(String name) {
+        this.name = name;
+        return this;
+    }
 }

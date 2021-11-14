@@ -25,80 +25,85 @@ public class Semaphore {
     /**
      * Allocate a new semaphore.
      *
-     * @param	initialValue	the initial value of this semaphore.
+     * @param initialValue the initial value of this semaphore.
      */
     public Semaphore(int initialValue) {
-	value = initialValue;
+        value = initialValue;
     }
 
     /**
      * Atomically wait for this semaphore to become non-zero and decrement it.
      */
     public void P() {
-	boolean intStatus = Machine.interrupt().disable();
+        boolean intStatus = Machine.interrupt().disable();
 
-	if (value == 0) {
-	    waitQueue.waitForAccess(KThread.currentThread());
-	    KThread.sleep();
-	}
-	else {
-	    value--;
-	}
+        if (value == 0) {
+            waitQueue.waitForAccess(KThread.currentThread());
+            KThread.sleep();
+        } else {
+            value--;
+        }
 
-	Machine.interrupt().restore(intStatus);
+        Machine.interrupt().restore(intStatus);
     }
 
     /**
      * Atomically increment this semaphore and wake up at most one other thread
      * sleeping on this semaphore.
+     * Notice the guarantee that at most one other thread would be waken up.
      */
     public void V() {
-	boolean intStatus = Machine.interrupt().disable();
+        boolean intStatus = Machine.interrupt().disable();
 
-	KThread thread = waitQueue.nextThread();
-	if (thread != null) {
-	    thread.ready();
-	}
-	else {
-	    value++;
-	}
-	
-	Machine.interrupt().restore(intStatus);
+        KThread thread = waitQueue.nextThread();
+        if (thread != null) {
+            thread.ready();
+        } else {
+            value++;
+        }
+
+        Machine.interrupt().restore(intStatus);
     }
 
     private static class PingTest implements Runnable {
-	PingTest(Semaphore ping, Semaphore pong) {
-	    this.ping = ping;
-	    this.pong = pong;
-	}
-	
-	public void run() {
-	    for (int i=0; i<10; i++) {
-		ping.P();
-		pong.V();
-	    }
-	}
+        PingTest(Semaphore ping, Semaphore pong) {
+            this.ping = ping;
+            this.pong = pong;
+        }
 
-	private Semaphore ping;
-	private Semaphore pong;
+        public void run() {
+            System.out.println("to Semaphore PingTest");
+            for (int i = 0; i < 10; i++) {
+                System.out.println("currentThread : " + Thread.currentThread().getName() +" loop " +i);
+                ping.P();
+                pong.V();
+            }
+        }
+
+        private final Semaphore ping;
+        private final Semaphore pong;
     }
 
     /**
      * Test if this module is working.
      */
     public static void selfTest() {
-	Semaphore ping = new Semaphore(0);
-	Semaphore pong = new Semaphore(0);
+        System.out.println("\nto SemaphoreTest here\n");
 
-	new KThread(new PingTest(ping, pong)).setName("ping").fork();
+        Semaphore ping = new Semaphore(0);
+        Semaphore pong = new Semaphore(0);
 
-	for (int i=0; i<10; i++) {
-	    ping.V();
-	    pong.P();
-	}
+        new KThread(new PingTest(ping, pong)).setName("ping").fork();
+
+        for (int i = 0; i < 10; i++) {
+            System.out.println("currentThread : " + Thread.currentThread().getName() +" loop " +i);
+            ping.V();
+            pong.P();
+        }
     }
 
     private int value;
-    private ThreadQueue waitQueue =
-	ThreadedKernel.scheduler.newThreadQueue(false);
+    // 这个 waitingSet 含义是存储那些因为信号量而等待的内核线程
+    // 一个信号量实例对应一个 waitingSet
+    private final ThreadQueue waitQueue = ThreadedKernel.scheduler.newThreadQueue(false);
 }

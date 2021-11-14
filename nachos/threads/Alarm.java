@@ -2,6 +2,8 @@ package nachos.threads;
 
 import nachos.machine.*;
 
+import java.util.PriorityQueue;
+
 /**
  * Uses the hardware timer to provide preemption, and to allow threads to sleep
  * until a certain time.
@@ -15,9 +17,14 @@ public class Alarm {
      * alarm.
      */
     public Alarm() {
-	Machine.timer().setInterruptHandler(new Runnable() {
-		public void run() { timerInterrupt(); }
-	    });
+        this.waitingThreadQueue = new PriorityQueue<>();
+        Machine.timer().setInterruptHandler(new Runnable() {
+            public void run() {
+//                System.out.println("here cur thread "+Thread.currentThread().getName());
+                handleWaitingThreads();
+                timerInterrupt();
+            }
+        });
     }
 
     /**
@@ -27,7 +34,30 @@ public class Alarm {
      * that should be run.
      */
     public void timerInterrupt() {
-	KThread.currentThread().yield();
+//        KThread.currentThread().yield(); 我觉得原始代码是想表达如下意思
+
+//        System.out.println("to timerInterrupt......");
+//        System.out.println("current KThread : "+KThread.currentThread().getName());
+//        System.out.println("current java Thread : " + Thread.currentThread().getName()+"\n");
+
+        Lib.assertTrue(KThread.currentThread() != null);
+        Lib.assertTrue(Machine.interrupt().disabled(),"当前屏蔽中断");
+        KThread.yield();
+    }
+
+    private void handleWaitingThreads() {
+        while (!waitingThreadQueue.isEmpty()) {
+            long currentTime = Machine.timer().getTime();
+            if (waitingThreadQueue.peek().wakeTime > currentTime) break;
+
+            boolean intStatus = Machine.interrupt().disable();
+
+            WaitingThread waitingThread = waitingThreadQueue.poll();
+            if (waitingThread != null) {
+                waitingThread.thread.ready();
+            }
+            Machine.interrupt().restore(intStatus);
+        }
     }
 
     /**
@@ -40,14 +70,44 @@ public class Alarm {
      * (current time) >= (WaitUntil called time)+(x)
      * </blockquote>
      *
-     * @param	x	the minimum number of clock ticks to wait.
-     *
-     * @see	nachos.machine.Timer#getTime()
+     * @param x the minimum number of clock ticks to wait.
+     * @see nachos.machine.Timer#getTime()
      */
     public void waitUntil(long x) {
-	// for now, cheat just to get something working (busy waiting is bad)
-	long wakeTime = Machine.timer().getTime() + x;
-	while (wakeTime > Machine.timer().getTime())
-	    KThread.yield();
+
+        long wakeTime = Machine.timer().getTime() + x;
+        waitingThreadQueue.add(new WaitingThread(wakeTime, KThread.currentThread()));
+
+        boolean intStatus = Machine.interrupt().disable();
+
+        KThread.sleep();
+
+        Machine.interrupt().restore(intStatus);
+
+
+        // for now, cheat just to get something working (busy waiting is bad)
+//        while (wakeTime > Machine.timer().getTime())
+//            KThread.yield();
     }
+
+
+    private final PriorityQueue<WaitingThread> waitingThreadQueue;
+
+
+    private static class WaitingThread implements Comparable<WaitingThread> {
+        long wakeTime;
+        KThread thread;
+
+        public WaitingThread(long wakeTime, KThread thread) {
+            Lib.assertTrue(thread != null);
+            this.wakeTime = wakeTime;
+            this.thread = thread;
+        }
+
+        @Override
+        public int compareTo(WaitingThread o) {
+            return wakeTime - o.wakeTime < 0 ? -1 : 1;
+        }
+    }
+
 }

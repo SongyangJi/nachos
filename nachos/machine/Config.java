@@ -8,8 +8,10 @@ import java.io.FileReader;
 import java.io.Reader;
 import java.io.StreamTokenizer;
 
+
 /**
  * Provides routines to access the Nachos configuration.
+ * 配置类，提供配置选项的读取操作
  */
 public final class Config {
     /**
@@ -20,7 +22,7 @@ public final class Config {
      * configuration to use.
      */
     public static void load(String fileName) {
-        System.out.print(" config");
+        System.out.println(" config");
 
         Lib.assertTrue(!loaded);
         loaded = true;
@@ -132,7 +134,7 @@ public final class Config {
             if (value == null)
                 return null;
 
-            return new Integer(value);
+            return Integer.valueOf(value);
         } catch (NumberFormatException e) {
             configError(key + " should be an integer");
 

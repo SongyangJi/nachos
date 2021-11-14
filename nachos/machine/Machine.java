@@ -12,10 +12,14 @@ import java.io.File;
  * constructs all simulated hardware devices, and starts the grader.
  */
 public final class Machine {
-    /**
+    /*
      * Nachos main entry point.
      *
      * @param    args    the command line arguments.
+     */
+
+    /**
+     * nachos OS 启动入口
      */
     public static void main(final String[] args) {
         System.out.print("nachos 5.0j initializing...");
@@ -25,12 +29,17 @@ public final class Machine {
 
         processArgs();
 
-        Config.load("nachos/nachos.conf");
+        // 加载配置文件
+        Config.load(configFileName);
+//        Config.load("/Users/jisongyang/OS-design/nachos-sp14-java/nachos/proj2/nachos.conf");
 
         // get the current directory (.)
         baseDirectory = new File(new File("").getAbsolutePath());
+        System.out.println("baseDirectory: " + baseDirectory);
+
         // get the nachos directory (./nachos)
         nachosDirectory = new File(baseDirectory, "nachos");
+        System.out.println("nachosDirectory: " + nachosDirectory);
 
         String testDirectoryName =
                 Config.getString("FileSystem.testDirectory");
@@ -39,22 +48,25 @@ public final class Machine {
         if (testDirectoryName != null) {
             testDirectory = new File(testDirectoryName);
         } else {
-            // use ../test
-            testDirectory = new File(baseDirectory.getParentFile(), "test");
+            // 和原始的路径不一样
+            testDirectory = new File(baseDirectory, "test");
+            System.out.println("testDirectory: " + testDirectory);
         }
 
+        // 配置安全管理机制
         securityManager = new NachosSecurityManager(testDirectory);
         privilege = securityManager.getPrivilege();
-
         privilege.machine = new MachinePrivilege();
-
         TCB.givePrivilege(privilege);
         privilege.stats = stats;
-
         securityManager.enable();
+
+        // 创建并初始化所有设备
         createDevices();
+        // 检查用户写的类是否具有某些不可缺少的字段和方法
         checkUserClasses();
 
+        // 评测实验的对错的模块（不必关心）
         autoGrader = (AutoGrader) Lib.constructObject(autoGraderClassName);
 
         new TCB().start(new Runnable() {
@@ -62,6 +74,7 @@ public final class Machine {
                 autoGrader.start(privilege);
             }
         });
+
     }
 
     /**
@@ -82,7 +95,7 @@ public final class Machine {
     /**
      * Terminate Nachos as the result of an unhandled exception or error.
      *
-     * @param    e    the exception or error.
+     * @param e the exception or error.
      */
     public static void terminate(Throwable e) {
         if (e instanceof ThreadDeath)
@@ -114,44 +127,55 @@ public final class Machine {
         return result;
     }
 
+
+    /**
+     * 加载启动参数
+     */
     private static void processArgs() {
         for (int i = 0; i < args.length; ) {
             String arg = args[i++];
             if (arg.length() > 0 && arg.charAt(0) == '-') {
-                if (arg.equals("-d")) {
-                    Lib.assertTrue(i < args.length, "switch without argument");
-                    Lib.enableDebugFlags(args[i++]);
-                } else if (arg.equals("-h")) {
-                    System.out.print(help);
-                    System.exit(1);
-                } else if (arg.equals("-m")) {
-                    Lib.assertTrue(i < args.length, "switch without argument");
-                    try {
-                        numPhysPages = Integer.parseInt(args[i++]);
-                    } catch (NumberFormatException e) {
-                        Lib.assertNotReached("bad value for -m switch");
-                    }
-                } else if (arg.equals("-s")) {
-                    Lib.assertTrue(i < args.length, "switch without argument");
-                    try {
-                        randomSeed = Long.parseLong(args[i++]);
-                    } catch (NumberFormatException e) {
-                        Lib.assertNotReached("bad value for -s switch");
-                    }
-                } else if (arg.equals("-x")) {
-                    Lib.assertTrue(i < args.length, "switch without argument");
-                    shellProgramName = args[i++];
-                } else if (arg.equals("-z")) {
-                    System.out.print(copyright);
-                    System.exit(1);
-                }
-                // these switches are reserved for the autograder
-                else if (arg.equals("-[]")) {
-                    Lib.assertTrue(i < args.length, "switch without argument");
-                    configFileName = args[i++];
-                } else if (arg.equals("--")) {
-                    Lib.assertTrue(i < args.length, "switch without argument");
-                    autoGraderClassName = args[i++];
+                switch (arg) {
+                    case "-d":
+                        Lib.assertTrue(i < args.length, "switch without argument");
+                        Lib.enableDebugFlags(args[i++]);
+                        break;
+                    case "-h":
+                        System.out.print(help);
+                        System.exit(1);
+                    case "-m":
+                        Lib.assertTrue(i < args.length, "switch without argument");
+                        try {
+                            numPhysPages = Integer.parseInt(args[i++]);
+                        } catch (NumberFormatException e) {
+                            Lib.assertNotReached("bad value for -m switch");
+                        }
+                        break;
+                    case "-s":
+                        Lib.assertTrue(i < args.length, "switch without argument");
+                        try {
+                            randomSeed = Long.parseLong(args[i++]);
+                        } catch (NumberFormatException e) {
+                            Lib.assertNotReached("bad value for -s switch");
+                        }
+                        break;
+                    case "-x":
+                        Lib.assertTrue(i < args.length, "switch without argument");
+                        shellProgramName = args[i++];
+                        break;
+                    case "-z":
+                        System.out.print(copyright);
+                        System.exit(1);
+
+                        // these switches are reserved for the autograder
+                    case "-[]":
+                        Lib.assertTrue(i < args.length, "switch without argument");
+                        configFileName = args[i++];
+                        break;
+                    case "--":
+                        Lib.assertTrue(i < args.length, "switch without argument");
+                        autoGraderClassName = args[i++];
+                        break;
                 }
             }
         }
@@ -183,13 +207,13 @@ public final class Machine {
     }
 
     private static void checkUserClasses() {
-        System.out.print(" user-check");
-
+        System.out.println("user-check");
+        // 用反射获取一些基本类的 Class 对象
         Class aclsInt = (new int[0]).getClass();
         Class clsObject = Lib.loadClass("java.lang.Object");
         Class clsRunnable = Lib.loadClass("java.lang.Runnable");
         Class clsString = Lib.loadClass("java.lang.String");
-
+        // machine 下的 Kernel 抽象类
         Class clsKernel = Lib.loadClass("nachos.machine.Kernel");
         Class clsFileSystem = Lib.loadClass("nachos.machine.FileSystem");
         Class clsRiderControls = Lib.loadClass("nachos.machine.RiderControls");
@@ -203,15 +227,17 @@ public final class Machine {
         Class clsAlarm = Lib.loadClass("nachos.threads.Alarm");
         Class clsThreadedKernel =
                 Lib.loadClass("nachos.threads.ThreadedKernel");
+        // KThread 类
         Class clsKThread = Lib.loadClass("nachos.threads.KThread");
         Class clsCommunicator = Lib.loadClass("nachos.threads.Communicator");
         Class clsSemaphore = Lib.loadClass("nachos.threads.Semaphore");
         Class clsLock = Lib.loadClass("nachos.threads.Lock");
-        Class clsCondition = Lib.loadClass("nachos.threads.Condition");
+        Class clsCondition = Lib.loadClass("nachos.threads.Condition1");
         Class clsCondition2 = Lib.loadClass("nachos.threads.Condition2");
         Class clsRider = Lib.loadClass("nachos.threads.Rider");
         Class clsElevatorController =
                 Lib.loadClass("nachos.threads.ElevatorController");
+
 
         Lib.checkDerivation(clsThreadedKernel, clsKernel);
 
@@ -239,7 +265,6 @@ public final class Machine {
         Lib.checkMethod(clsKThread, "fork", new Class[]{}, void.class);
         Lib.checkMethod(clsKThread, "ready", new Class[]{}, void.class);
         Lib.checkMethod(clsKThread, "join", new Class[]{}, void.class);
-
         Lib.checkField(clsKThread, "schedulingState", clsObject);
 
         Lib.checkConstructor(clsCommunicator, new Class[]{});
@@ -396,10 +421,10 @@ public final class Machine {
      * <tt>nachos.network.NetProcess</tt>.
      *
      * @return the name of the process class that the kernel should use.
-     * @see    nachos.userprog.UserKernel#run
-     * @see    nachos.userprog.UserProcess
-     * @see    nachos.vm.VMProcess
-     * @see    nachos.network.NetProcess
+     * @see nachos.userprog.UserKernel#run
+     * @see nachos.userprog.UserProcess
+     * @see nachos.vm.VMProcess
+     * @see nachos.network.NetProcess
      */
     public static String getProcessClassName() {
         if (processClassName == null)
@@ -416,12 +441,14 @@ public final class Machine {
 
     private static String[] args = null;
 
+
     private static Stats stats = new Stats();
 
     private static int numPhysPages = -1;
     private static long randomSeed = 0;
 
     private static File baseDirectory, nachosDirectory, testDirectory;
+
     private static String configFileName = "nachos.conf";
 
     private static final String help =
