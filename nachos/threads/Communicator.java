@@ -1,11 +1,7 @@
 package nachos.threads;
 
 
-import nachos.machine.Lib;
-import nachos.machine.Machine;
-
 import java.util.LinkedList;
-import java.util.concurrent.TimeUnit;
 
 /**
  * A <i>communicator</i> allows threads to synchronously exchange 32-bit
@@ -15,6 +11,8 @@ import java.util.concurrent.TimeUnit;
  * threads can be paired off at this point.
  */
 public class Communicator {
+
+    static final int N = 3;
 
     final Lock lock;
     final Condition hasProducer;
@@ -55,7 +53,9 @@ public class Communicator {
     public void speak(int word) {
         lock.acquire();
 
+        System.out.println(KThread.currentThread().getName() + " says " + word);
         buffer.add(word);
+
         if (hasConsumersWaiting()) {
             --numOfWaitingConsumers;
             hasProducer.wake();
@@ -91,11 +91,7 @@ public class Communicator {
     }
 
     public static void delay() {
-        try {
-            Thread.sleep(Lib.random(500) + 500);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
+        KThread.yield();
     }
 
     private static class Speaker implements Runnable {
@@ -111,9 +107,8 @@ public class Communicator {
 
         @Override
         public void run() {
-            while (true) {
+            for (int i = 0; i < N; i++) {
                 int message = (++id);
-                System.out.println("speaker-" + which + " says " + message);
                 communicator.speak(message);
                 delay();
             }
@@ -131,27 +126,23 @@ public class Communicator {
 
         @Override
         public void run() {
-            while (true) {
-                System.out.println("listener-" + which + " hears " + communicator.listen());
+            for (int i = 0; i < N; i++) {
+                System.out.println(KThread.currentThread().getName() + " hears " + communicator.listen());
                 delay();
             }
         }
     }
 
     public static void showDemo() {
-        System.out.println("\nto Communicator demo\n");
+        System.out.println("\nto Communicator demo ********************************************************************\n");
+
         Communicator communicator = new Communicator();
         for (int i = 0; i < 3; i++) {
-            new KThread(new Speaker(communicator, i)).setName("Speaker-" + i * 2).fork();
-            new KThread(new Listener(communicator, i)).setName("Listener-" + i * 2 + 1).fork();
+            new KThread(new Speaker(communicator, i)).setName("Speaker-" + i).fork();
+            new KThread(new Listener(communicator, i)).setName("Listener-" + i).fork();
         }
 
-
-//        while (true) {
-//            System.out.println("...");
-            KThread.yield();
-//        }
-
+        KThread.yield();
 
     }
 

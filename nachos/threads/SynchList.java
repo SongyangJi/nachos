@@ -70,7 +70,8 @@ public class SynchList {
      * Test that this module is working.
      */
     public static void selfTest() {
-        System.out.println("\nto SynchList Test\n");
+        System.out.println("\nto SynchList Test ********************************************************************\n");
+
         SynchList ping = new SynchList();
         SynchList pong = new SynchList();
 

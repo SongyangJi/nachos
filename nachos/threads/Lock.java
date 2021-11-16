@@ -57,9 +57,9 @@ public class Lock {
 
         boolean intStatus = Machine.interrupt().disable();
 
-        if ((lockHolder = waitQueue.nextThread()) != null)
+        if ((lockHolder = waitQueue.nextThread()) != null) {
             lockHolder.ready();
-
+        }
         Machine.interrupt().restore(intStatus);
     }
 

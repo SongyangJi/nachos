@@ -286,9 +286,10 @@ public class KThread {
         Lib.assertTrue(status != statusReady);
 
         status = statusReady;
-        if (this != idleThread)
+        if (this != idleThread) {
             // 将此线程加入 ready 队列，等待调度
             readyQueue.waitForAccess(this);
+        }
 
         Machine.autoGrader().readyThread(this);
     }
@@ -309,11 +310,13 @@ public class KThread {
         // 延迟初始化
         if (waitMeFinishThreadsQueue == null) {
             this.waitMeFinishThreadsQueue = ThreadedKernel.scheduler.newThreadQueue(true);
-            waitMeFinishThreadsQueue.acquire(currentThread);
+            waitMeFinishThreadsQueue.acquire(this); // todo
         }
 
         waitMeFinishThreadsQueue.waitForAccess(currentThread);
         sleep();
+
+//        thread.join();
 
         Machine.interrupt().restore(intStatus);
 
@@ -434,7 +437,7 @@ public class KThread {
 
         public void run() {
             System.out.println("current thread wait for a while first ...");
-            ThreadedKernel.alarm.waitUntil(10 * 200);
+            ThreadedKernel.alarm.waitUntil(10 * 2000000);
             System.out.println("current thread waiting finished..");
 
             for (int i = 0; i < 5; i++) {
@@ -456,9 +459,9 @@ public class KThread {
 
     private static void doIdleWork() {
         System.out.println(KThread.currentThread.getName() + " 开始工作");
-        for (int i = 0; i < 1000000; i++) {
+        for (int i = 0; i < 10; i++) {
             KThread.yield();
-//            System.out.println(KThread.currentThread.getName() + " 正在工作~" + i);
+            System.out.println(KThread.currentThread.getName() + " 正在工作~" + i);
         }
         System.out.println(KThread.currentThread.getName() + " finished...");
     }
@@ -466,7 +469,7 @@ public class KThread {
 
     public static void priorityInheritanceTest() {
 
-        System.out.println("\nto priorityInheritanceTest\n");
+        System.out.println("\nto priorityInheritanceTest ********************************************************************\n");
 
         Lock lock = new Lock();
 
@@ -514,14 +517,14 @@ public class KThread {
                 kThread4.fork();
                 kThread7.fork();
 
-                for (int i = 0; i < 1000000; i++) {
-                    if (i == 500000) {
+                for (int i = 0; i < 10; i++) {
+                    if (i == 5) {
                         System.out.println(KThread.currentThread.getName() + " 释放锁");
                         lock.release();
                     }
                     KThread.yield();
-//                    System.out.println(KThread.currentThread.getName() + " 正在工作~" + i);
-//                    System.out.println("它的有效优先级为： "+ThreadedKernel.scheduler.getEffectivePriority());
+                    System.out.println(KThread.currentThread.getName() + " 正在工作~" + i);
+                    System.out.println("它的有效优先级为： "+ThreadedKernel.scheduler.getEffectivePriority());
                 }
                 System.out.println(KThread.currentThread.getName() + " finished...");
             }
@@ -530,12 +533,72 @@ public class KThread {
         setPriority(kThread2, 2);
         kThread2.fork();
 
+
         KThread.yield();
 
     }
 
+    public static void priorityInheritanceTest2() {
+
+        System.out.println("\nto priorityInheritanceTest2 ********************************************************************\n");
+
+
+        KThread kThread2 = new KThread(new Runnable() {
+            @Override
+            public void run() {
+                System.out.println(KThread.currentThread.getName() + " 开始工作");
+
+                for (int i = 0; i < 10; i++) {
+                    KThread.yield();
+                    System.out.println(KThread.currentThread.getName() + " 正在工作~" + i);
+                    System.out.println("它的有效优先级为： "+ThreadedKernel.scheduler.getEffectivePriority());
+                }
+                System.out.println(KThread.currentThread.getName() + " finished...");
+            }
+        }).setName("优先级-2的线程");
+
+
+
+        KThread kThread3 = new KThread(new Runnable() {
+            @Override
+            public void run() {
+                doIdleWork();
+            }
+        }).setName("优先级-3的线程");
+
+        KThread kThread4 = new KThread(new Runnable() {
+            @Override
+            public void run() {
+                doIdleWork();
+            }
+        }).setName("优先级-4的线程");
+
+
+        KThread kThread7 = new KThread(new Runnable() {
+            @Override
+            public void run() {
+                kThread2.join();
+                doIdleWork();
+            }
+        }).setName("优先级-7的线程");
+
+
+        setPriority(kThread2, 2);
+        setPriority(kThread3, 3);
+        setPriority(kThread4, 4);
+        setPriority(kThread7, 7);
+
+        kThread2.fork();
+        kThread3.fork();
+        kThread4.fork();
+        kThread7.fork();
+
+        KThread.yield();
+    }
+
+
     public static void priorityScheduleTest() {
-        System.out.println("\nto PriorityScheduleTest\n");
+        System.out.println("\nto PriorityScheduleTest ********************************************************************\n");
 
         KThread thread2 = new KThread(new Runnable() {
             @Override
@@ -598,7 +661,7 @@ public class KThread {
     public static void selfTest() {
         Lib.debug(dbgThread, "Enter KThread.selfTest");
 
-        System.out.println("\nto KThreadTest here\n");
+        System.out.println("\nto KThreadTest here ********************************************************************\n");
 
         KThread thread1 = new KThread(new PingTest(1)).setName("forked thread");
         thread1.fork();

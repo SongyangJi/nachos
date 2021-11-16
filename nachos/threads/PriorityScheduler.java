@@ -144,6 +144,7 @@ public class PriorityScheduler extends Scheduler {
             ThreadState threadState = getThreadState(thread);
             threadState.acquire(this); // 先执行断言操作
 
+//            System.out.println("执行断言: "+resourceHolder.thread.getName());
             Lib.assertTrue(resourceHolder == null);
             resourceHolder = threadState;
         }
@@ -152,6 +153,7 @@ public class PriorityScheduler extends Scheduler {
             Lib.assertTrue(Machine.interrupt().disabled());
             // implement me
             if (waitingSet.isEmpty()) {
+                resourceHolder = null; // todo
                 return null;
             }
 
@@ -285,21 +287,6 @@ public class PriorityScheduler extends Scheduler {
                 treeSet.remove(this);
                 this.effectivePriority = effectivePriority;
                 treeSet.add(this);
-//                System.out.println(waitQueue.name + " 目前为 ： " + treeSet);
-//                System.out.println("下一个为： " + waitQueue.pickNextThread());
-//                System.out.println();
-
-//                if (effectivePriority >= 3) {
-//                    if (this.waitQueue.name != null) {
-//                        System.out.println(this.waitQueue.name);
-//                        System.out.println("to here");
-//                        for (ThreadState threadState : this.waitQueue.waitingSet) {
-//                            System.out.print(threadState.thread.getName() + "的有效优先级为" + threadState.getEffectivePriority() + " 、 ");
-//                        }
-//                        System.out.println();
-//                    }
-//                }
-
 
             } else {
                 this.effectivePriority = effectivePriority;
@@ -343,12 +330,15 @@ public class PriorityScheduler extends Scheduler {
             waitQueue.waitingSet.add(this);
 
 
-            Lib.assertTrue(waitQueue.resourceHolder != null);
+            ThreadState currentResourceHolder = waitQueue.resourceHolder;
+
+            // todo  Lib.assertTrue(waitQueue.resourceHolder != null); 此断言是没必要的
 
             int higherEffectivePriority = this.getEffectivePriority();
             // 优先级链式传递，直到某个线程不处于等待状态
-            if (higherEffectivePriority > waitQueue.resourceHolder.getEffectivePriority()) {
-                PriorityQueue departure = waitQueue, destination = waitQueue.resourceHolder.waitQueue;
+            if (currentResourceHolder != null
+                    && higherEffectivePriority > currentResourceHolder.getEffectivePriority()) {
+                PriorityQueue departure = waitQueue, destination = currentResourceHolder.waitQueue;
 
                 while (destination != null &&
                         higherEffectivePriority > departure.resourceHolder.getPriority() &&

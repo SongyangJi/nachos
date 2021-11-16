@@ -47,20 +47,29 @@ public class ThreadedKernel extends Kernel {
      * tests here.
      */
     public void selfTest() {
+
+        // 内核任务不可中断
 //        KThread.idleTest();
-//        KThread.selfTest();
+
+        // 测试 join()、waitUntil()
+        KThread.selfTest();
+        // 这个函数没有我们自己的实现，所以不运行
 //        Semaphore.selfTest();
-//        SynchList.selfTest();
 
-//        KThread.priorityScheduleTest();
+        // 用SynchList测试 Condition2
+        SynchList.selfTest();
+
+        // 测试运行时优先级的更改
+        KThread.priorityScheduleTest();
+        // 测试优先级的继承（through lock）
         KThread.priorityInheritanceTest();
-
+        // 测试优先级的继承（through join）
+        KThread.priorityInheritanceTest2();
         // 测试生产者-消费者程序
-//        Communicator.showDemo();
+        Communicator.showDemo();
+        // 测试坐船游戏
+        Boat.selfTest();
 
-//        if (Machine.bank() != null) {
-//            ElevatorBank.selfTest();
-//        }
     }
 
     /**

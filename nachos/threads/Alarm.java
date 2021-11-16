@@ -36,10 +36,6 @@ public class Alarm {
     public void timerInterrupt() {
 //        KThread.currentThread().yield(); 我觉得原始代码是想表达如下意思
 
-//        System.out.println("to timerInterrupt......");
-//        System.out.println("current KThread : "+KThread.currentThread().getName());
-//        System.out.println("current java Thread : " + Thread.currentThread().getName()+"\n");
-
         Lib.assertTrue(KThread.currentThread() != null);
         Lib.assertTrue(Machine.interrupt().disabled(),"当前屏蔽中断");
         KThread.yield();

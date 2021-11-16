@@ -82,6 +82,7 @@ public class Condition1 implements Condition {
 
         Semaphore waiter = new Semaphore(0);
         waitQueue.add(waiter);
+
         // 释放锁
         conditionLock.release();
         waiter.P();
