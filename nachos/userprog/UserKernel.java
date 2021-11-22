@@ -2,7 +2,10 @@ package nachos.userprog;
 
 import nachos.machine.*;
 import nachos.threads.*;
-import nachos.userprog.*;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.TreeSet;
 
 /**
  * A kernel that can support multiple user processes.
@@ -36,20 +39,21 @@ public class UserKernel extends ThreadedKernel {
      * Test the console device.
      */
     public void selfTest() {
-        super.selfTest();
+        // todo 先去掉
+//        super.selfTest();
 
-        System.out.println("Testing the console device. Typed characters");
-        System.out.println("will be echoed until q is typed.");
+//        System.out.println("Testing the console device. Typed characters");
+//        System.out.println("will be echoed until q is typed.");
 
-        char c;
+        // todo
+//        char c;
+//        do {
+//            c = (char) console.readByte(true);
+//            console.writeByte(c);
+//        }
+//        while (c != 'q');
 
-        do {
-            c = (char) console.readByte(true);
-            console.writeByte(c);
-        }
-        while (c != 'q');
-
-        System.out.println("");
+        System.out.println();
     }
 
     /**
@@ -97,9 +101,16 @@ public class UserKernel extends ThreadedKernel {
 
         UserProcess process = UserProcess.newUserProcess();
 
+
         String shellProgram = Machine.getShellProgramName();
         // 入口 : process.execute
-        Lib.assertTrue(process.execute(shellProgram, new String[]{}));
+//        System.err.println("shell "+shellProgram);
+        String[] args = new String[]{};
+//        if (shellProgram.equals("test_fileio.coff")) {
+//            String name = "test_text.txt";
+//            args = new String[]{shellProgram, name};
+//        }
+        Lib.assertTrue(process.execute(shellProgram, args));
 
 //        KThread.currentThread().finish();
         Lib.assertTrue(KThread.currentThread() != null);
@@ -123,4 +134,38 @@ public class UserKernel extends ThreadedKernel {
 
     // dummy variables to make javac smarter
     private static Coff dummy1 = null;
+
+
+    // todo 同步访问
+    // 空闲帧列表
+    private static final TreeSet<Integer> freePhysicalPages;
+
+    static {
+        freePhysicalPages = new TreeSet<>();
+        int numPhysPages = Machine.processor().getNumPhysPages();
+        for (int i = 0; i < numPhysPages; i++) {
+            freePhysicalPages.add(i);
+        }
+    }
+
+    public static int numFreePhysicalPages() {
+        return freePhysicalPages.size();
+    }
+
+    public static List<Integer> allocatePhysicalPages(int numPages) {
+        if (freePhysicalPages.size() < numPages) {
+            return null;
+        }
+
+        List<Integer> list = new ArrayList<>();
+        for (int i = 0; i < numPages; i++) {
+            list.add(freePhysicalPages.pollFirst());
+        }
+        return list;
+    }
+
+    public static void freePhysicalPages(List<Integer> physicalPageNumberList) {
+        freePhysicalPages.addAll(physicalPageNumberList);
+    }
+
 }

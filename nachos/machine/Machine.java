@@ -46,7 +46,8 @@ public final class Machine {
 
         // get the test directory
         if (testDirectoryName != null) {
-            testDirectory = new File(testDirectoryName);
+            testDirectory = new File(baseDirectory, testDirectoryName);
+            System.out.println("testDirectory: " + testDirectory.getAbsolutePath());
         } else {
             // 和原始的路径不一样
             testDirectory = new File(baseDirectory, "test");
@@ -442,7 +443,7 @@ public final class Machine {
     private static String[] args = null;
 
 
-    private static Stats stats = new Stats();
+    private static final Stats stats = new Stats();
 
     private static int numPhysPages = -1;
     private static long randomSeed = 0;

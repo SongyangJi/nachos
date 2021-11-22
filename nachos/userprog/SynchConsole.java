@@ -2,7 +2,6 @@ package nachos.userprog;
 
 import nachos.machine.*;
 import nachos.threads.*;
-import nachos.userprog.*;
 
 /**
  * Provides a simple, synchronized interface to the machine's console. The
@@ -12,7 +11,7 @@ public class SynchConsole {
     /**
      * Allocate a new <tt>SynchConsole</tt>.
      *
-     * @param    console    the underlying serial console to use.
+     * @param console the underlying serial console to use.
      */
     public SynchConsole(SerialConsole console) {
         this.console = console;
@@ -35,8 +34,8 @@ public class SynchConsole {
      * <tt>255</tt>). If a byte has not arrived at, blocks until a byte
      * arrives, or returns immediately, depending on the value of <i>block</i>.
      *
-     * @param    block    <tt>true</tt> if <tt>readByte()</tt> should wait for a
-     * byte if none is available.
+     * @param block <tt>true</tt> if <tt>readByte()</tt> should wait for a
+     *              byte if none is available.
      * @return the next byte read, or -1 if <tt>block</tt> was <tt>false</tt>
      * and no byte was available.
      */
@@ -77,7 +76,7 @@ public class SynchConsole {
     /**
      * Send a byte. Blocks until the send is complete.
      *
-     * @param    value    the byte to be sent (the upper 24 bits are ignored).
+     * @param value the byte to be sent (the upper 24 bits are ignored).
      */
     public void writeByte(int value) {
         writeLock.acquire();
@@ -125,13 +124,17 @@ public class SynchConsole {
 
             int i;
             for (i = 0; i < length; i++) {
-                int value = SynchConsole.this.readByte(false);
-                if (value == -1)
+                // todo 改为 true
+                int value = SynchConsole.this.readByte(true);
+                if (value == -1) {
                     break;
-
+                }
                 buf[offset + i] = (byte) value;
+                if (value == 10) {  // 以换行分割
+                    ++i;
+                    break;
+                }
             }
-
             return i;
         }
 
@@ -139,8 +142,8 @@ public class SynchConsole {
             if (!canWrite)
                 return 0;
 
-            for (int i = 0; i < length; i++)
-                SynchConsole.this.writeByte(buf[offset + i]);
+            String s = new String(buf, offset, length);
+            System.out.print(s);
 
             return length;
         }

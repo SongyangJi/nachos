@@ -25,6 +25,7 @@
 #define syscallMmap		10
 #define syscallConnect		11
 #define syscallAccept		12
+#define syscallFork         13
 
 /* Don't want the assembler to see C code, but start.s includes syscall.h. */
 #ifndef START_S
@@ -256,6 +257,12 @@ int connect(int host, int port);
  * occurred.
  */
 int accept(int port);
+
+
+/**
+ * 成功时返回子进程的pid,否则返回 -1
+ */
+int fork();
 
 #endif /* START_S */
 

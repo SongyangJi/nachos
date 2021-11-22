@@ -148,10 +148,10 @@ public class StandardConsole implements SerialConsole {
         outgoingKey = value & 0xFF;
     }
 
-    private Privilege privilege = null;
+    private final Privilege privilege;
 
-    private Runnable receiveInterrupt;
-    private Runnable sendInterrupt;
+    private final Runnable receiveInterrupt;
+    private final Runnable sendInterrupt;
 
     private Runnable receiveInterruptHandler = null;
     private Runnable sendInterruptHandler = null;

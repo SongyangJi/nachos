@@ -2,6 +2,7 @@ package nachos.threads;
 
 import nachos.ag.BoatGrader;
 import nachos.machine.Lib;
+import nachos.machine.Machine;
 
 public class Boat {
     static BoatGrader bg;
@@ -52,15 +53,18 @@ public class Boat {
      */
     private static boolean isFinish;
     static boolean is_first_go = true;
-    static boolean newOne = true;
+    static boolean initing = true;
     static int ChildrenN;
 
     public static void selfTest() {
+
+        int adults = 1, children = 2;
+        System.out.println("\n ***Testing Boats with" + children + " children, " + adults + " adults " +
+                "********************************************************************");
+        
+
         BoatGrader b = new BoatGrader();
-
-        System.out.println("\n ***Testing Boats with 2 children, 5 adults***");
-        begin(1, 2, b);
-
+        begin(adults, children, b);
     }
 
     public static void begin(int adults, int children, BoatGrader b) {
@@ -102,10 +106,9 @@ public class Boat {
             Runnable r = new Runnable() {
                 public void run() {
                     if (ChildrenN > 1) {
-                        newOne = true;
                         ChildrenN--;
                     } else {
-                        newOne = false; // 防止有了两个小孩就开始走的情况
+                        initing = false; // 有了两个小孩才开始走的情况
                     }
                     ChildItinerary();
                 }
@@ -128,7 +131,7 @@ public class Boat {
         bg.AdultRowToMolokai(); // adult to B
         adult_inA--;            // 在A的成人数量-1
         adult_inB++;            // 在B的成人数量+1
-        adult_can_go = false;   //这一次是成人走，下一次必须是孩子走。因为要保证B要至少有一个孩子
+        adult_can_go = false;   // 这一次是成人走，下一次必须是孩子走。因为要保证B要至少有一个孩子
         boat_A = false;         //成人过去了，船也过去了。
         children_condition_B.wake(); //唤醒一个在B的孩子，将船驶回A
 
@@ -139,13 +142,13 @@ public class Boat {
         bg.initializeChild(); //Required for autograder interface. Must be the first thing called.
 
         boolean is_on_A = true;
-
+        
         lock.acquire();
         // 运输没有完成
         while (!isFinish) {
             //如果这个孩子在A上
             if (is_on_A) {
-                if (!boat_A || adult_can_go || newOne) { // 如果船没在A、或者该成人走了，该孩子睡眠
+                if (!boat_A || adult_can_go || initing) { // 如果船没在A、或者该成人走了，该孩子睡眠
                     children_condition_A.sleep();
                 }
                 if (isPilot) { // 如果是第一个小孩，则设为舵手
@@ -156,8 +159,7 @@ public class Boat {
                     isPilot = false;
                     // 他是船长，再呼唤一个孩子一起走
                     children_condition_A.wake();
-                    // boat_A=false; //把船设为不在A
-                    children_condition_B.sleep(); //把孩子设为molokai并且不能走
+
                 } else { // 如果是第二个小孩，则设为游客
                     if (adult_inA == 0 && children_inA == 1)
                         isFinish = true;// 运输即将完成
@@ -173,8 +175,9 @@ public class Boat {
                     if (!isFinish) {
                         children_condition_B.wake();
                     }
-                    children_condition_B.sleep();
                 }
+
+                children_condition_B.sleep(); // 等待通知
 
             } else {  //如果船不在A,则孩子划船去A
                 bg.ChildRowToOahu();
@@ -191,7 +194,7 @@ public class Boat {
                     else
                         children_condition_A.wake();
                 }
-                children_condition_A.sleep();
+                children_condition_A.sleep(); // 等待通知
             }
         }
         lock.release();

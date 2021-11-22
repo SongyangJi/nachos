@@ -170,6 +170,7 @@ public class KThread {
     private void runThread() {
         begin();
         target.run();
+        System.out.println("to finish...");
         finish();
     }
 
@@ -315,8 +316,6 @@ public class KThread {
 
         waitMeFinishThreadsQueue.waitForAccess(currentThread);
         sleep();
-
-//        thread.join();
 
         Machine.interrupt().restore(intStatus);
 
@@ -524,7 +523,8 @@ public class KThread {
                     }
                     KThread.yield();
                     System.out.println(KThread.currentThread.getName() + " 正在工作~" + i);
-                    System.out.println("它的有效优先级为： "+ThreadedKernel.scheduler.getEffectivePriority());
+
+                    showCurrentThreadEffectivePriority();
                 }
                 System.out.println(KThread.currentThread.getName() + " finished...");
             }
@@ -536,6 +536,12 @@ public class KThread {
 
         KThread.yield();
 
+    }
+
+    private static void showCurrentThreadEffectivePriority() {
+        boolean intStatus = Machine.interrupt().disable();
+        System.out.println("它的有效优先级为： "+ThreadedKernel.scheduler.getEffectivePriority());
+        Machine.interrupt().restore(intStatus);
     }
 
     public static void priorityInheritanceTest2() {
@@ -551,7 +557,7 @@ public class KThread {
                 for (int i = 0; i < 10; i++) {
                     KThread.yield();
                     System.out.println(KThread.currentThread.getName() + " 正在工作~" + i);
-                    System.out.println("它的有效优先级为： "+ThreadedKernel.scheduler.getEffectivePriority());
+                    showCurrentThreadEffectivePriority();
                 }
                 System.out.println(KThread.currentThread.getName() + " finished...");
             }

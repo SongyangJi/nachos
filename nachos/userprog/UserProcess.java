@@ -2,9 +2,9 @@ package nachos.userprog;
 
 import nachos.machine.*;
 import nachos.threads.*;
-import nachos.userprog.*;
 
 import java.io.EOFException;
+import java.util.*;
 
 /**
  * Encapsulates the state of a user process that is not contained in its
@@ -23,10 +23,14 @@ public class UserProcess {
      * Allocate a new process.
      */
     public UserProcess() {
-        int numPhysPages = Machine.processor().getNumPhysPages();
-        pageTable = new TranslationEntry[numPhysPages];
-        for (int i = 0; i < numPhysPages; i++)
-            pageTable[i] = new TranslationEntry(i, i, true, false, false, false);
+        fileOperations = FileOperations.newFileOperations();
+        childProcessMap = new HashMap<>();
+    }
+
+    private int virtualToPhysicalAddress(int vaddr) {
+        int vpn = Processor.pageFromAddress(vaddr);
+        int offset = Processor.offsetFromAddress(vaddr);
+        return (pageTable[vpn].ppn * pageSize) + offset;
     }
 
     /**
@@ -49,10 +53,13 @@ public class UserProcess {
      * @return <tt>true</tt> if the program was successfully executed.
      */
     public boolean execute(String name, String[] args) {
-        if (!load(name, args))
+        if (!load(name, args)) {
             return false;
-
-        new UThread(this).setName(name).fork();
+        }
+        // load 成功才自增pid计数器
+        pid = ++pidCounter;
+        uThread = new UThread(this);
+        uThread.setName(name).fork();
 
         return true;
     }
@@ -62,11 +69,13 @@ public class UserProcess {
      * Called by <tt>UThread.saveState()</tt>.
      */
     public void saveState() {
+        // todo
     }
 
     /**
      * Restore the state of this process after a context switch. Called by
      * <tt>UThread.restoreState()</tt>.
+     * 在上下文切换后恢复此进程的状态。 由UThread.restoreState()调用。
      */
     public void restoreState() {
         Machine.processor().setPageTable(pageTable);
@@ -99,6 +108,32 @@ public class UserProcess {
         }
 
         return null;
+    }
+
+
+    private String charPointerToString(int pointer) {
+        final int MAX_SIZE = 256;
+        return readVirtualMemoryString(pointer, MAX_SIZE);
+    }
+
+    private int intPointerToInt(int pointer) {
+        byte[] bytes = new byte[4];
+        int numByte = readVirtualMemory(pointer, bytes);
+        if (numByte != 4) return -1;
+        return Lib.bytesToInt(bytes, 0);
+    }
+
+    private String[] argvToStringArray(int argc, int argv) {
+        String[] res = new String[argc];
+        for (int i = 0; i < argc; i++) {
+            int p = argv + 4 * i;
+            int charPointer = intPointerToInt(p);
+            if (charPointer == -1) return null;
+            String s = charPointerToString(charPointer);
+            res[i] = s;
+        }
+//        System.out.println("argv :" + Arrays.toString(res));
+        return res;
     }
 
     /**
@@ -134,12 +169,20 @@ public class UserProcess {
         byte[] memory = Machine.processor().getMemory();
 
         // for now, just assume that virtual addresses equal physical addresses
-        if (vaddr < 0 || vaddr >= memory.length)
-            return 0;
-
+//        if (vaddr < 0 || vaddr >= memory.length)
+//            return 0;
+//
         int amount = Math.min(length, memory.length - vaddr);
-        System.arraycopy(memory, vaddr, data, offset, amount);
-
+//        System.arraycopy(memory, vaddr, data, offset, amount);
+//
+        // todo
+        int base = vaddr;
+        int paddr;
+        for (int i = offset; i < amount + offset; i++) {
+            vaddr = base + i;
+            paddr = virtualToPhysicalAddress(vaddr);
+            data[i] = memory[paddr];
+        }
         return amount;
     }
 
@@ -181,8 +224,15 @@ public class UserProcess {
             return 0;
 
         int amount = Math.min(length, memory.length - vaddr);
-        System.arraycopy(data, offset, memory, vaddr, amount);
+//        System.arraycopy(data, offset, memory, vaddr, amount);
 
+        int base = vaddr;
+        int paddr;
+        for (int i = offset; i < amount + offset; i++) {
+            vaddr = base + i;
+            paddr = virtualToPhysicalAddress(vaddr);
+            memory[paddr] = data[i];
+        }
         return amount;
     }
 
@@ -249,6 +299,18 @@ public class UserProcess {
         // and finally reserve 1 page for arguments
         numPages++;
 
+        // todo 初始化页表
+        if (numPages > UserKernel.numFreePhysicalPages()) return false;
+        pageTable = new TranslationEntry[numPages];
+        List<Integer> list = UserKernel.allocatePhysicalPages(numPages);
+//        System.out.println("空闲帧列表：" + list);
+        Lib.assertTrue(list != null && list.size() == numPages);
+        for (int i = 0; i < numPages; i++) {
+            int ppn = list.get(i);
+            pageTable[i] = new TranslationEntry(i, ppn, true, false, false, false);
+        }
+
+
         if (!loadSections())
             return false;
 
@@ -297,7 +359,15 @@ public class UserProcess {
                 int vpn = section.getFirstVPN() + i;
 
                 // for now, just assume virtual addresses = physical addresses
-                section.loadPage(i, vpn);
+//                section.loadPage(i, vpn);
+
+                // todo vpn->ppn
+                TranslationEntry entry = pageTable[vpn];
+                int ppn = entry.ppn;
+                if (section.isReadOnly()) {
+                    entry.readOnly = true;
+                }
+                section.loadPage(i, ppn);
             }
         }
 
@@ -345,6 +415,168 @@ public class UserProcess {
     }
 
 
+    private int handleExit(int status) {
+//        System.out.println("status : " + status);
+        this.exitStatus = status;
+        // todo 释放帧表
+        ArrayList<Integer> physicalPages = new ArrayList<>();
+        for (TranslationEntry entry : pageTable) {
+            physicalPages.add(entry.ppn);
+        }
+        UserKernel.freePhysicalPages(physicalPages);
+
+        KThread.finish();
+        return 0;
+    }
+
+    // int exec(char *file, int argc, char *argv[]);
+    private int handleExec(int filePointer, int argc, int argvPointer) {
+        String fileName = charPointerToString(filePointer);
+        String[] argv = argvToStringArray(argc, argvPointer);
+        if (fileName == null || argv == null) {
+            return -1;
+        }
+        UserProcess userProcess = UserProcess.newUserProcess();
+        if (userProcess.execute(fileName, argv)) {
+            childProcessMap.put(userProcess.pid, userProcess);
+            return userProcess.pid;
+        }
+        return -1;
+    }
+
+    private UserProcess forkProcess() {
+        UserProcess userProcess = new UserProcess();
+        // 复制页表
+        userProcess.pageTable = new TranslationEntry[numPages];
+        for (int i = 0; i < numPages; i++) {
+            userProcess.pageTable[i] = new TranslationEntry(this.pageTable[i]);
+        }
+
+        {
+            // 申请空闲帧
+            List<Integer> list = UserKernel.allocatePhysicalPages(numPages);
+            if (list == null) {
+                System.err.println("fatal");
+                return null;
+            }
+//            System.out.println("fork 空闲帧列表 : " + list);
+            for (int i = 0; i < numPages; i++) {
+                userProcess.pageTable[i].ppn = list.get(i);
+            }
+
+            //物理帧的复制
+            for (int i = 0; i < numPages; i++) {
+                Processor.copy(this.pageTable[i].ppn, userProcess.pageTable[i].ppn);
+            }
+        }
+
+
+        // 寄存器组的复制
+        int[] copyRegisters = Arrays.copyOf(Processor.currentRegisters(), Processor.numUserRegisters);
+        // 子进程的返回值是 0
+        copyRegisters[Processor.regV0] = 0;
+//        System.out.println("#1 当前寄存器组为 ： " + Arrays.toString(copyRegisters));
+
+
+        userProcess.coff = this.coff;
+        userProcess.numPages = this.numPages;
+        userProcess.initialPC = this.initialPC;
+        userProcess.initialSP = this.initialSP;
+        userProcess.argc = this.argc;
+        userProcess.argv = this.argv;
+        userProcess.pid = ++pidCounter;
+
+
+        UThread uThread = new UThread(userProcess, copyRegisters);
+        userProcess.uThread = uThread;
+        uThread.setName(this.uThread.getName() + "-fork");
+        // todo
+        uThread.fork();
+
+        return userProcess;
+    }
+
+    // 自己实现的 fork 系统调用
+    private int handleFork() {
+        UserProcess childProcess = forkProcess();
+        if (childProcess == null) {
+            return -1;
+        }
+        int pid = childProcess.pid;
+        childProcessMap.put(pid, childProcess);
+        return pid;
+    }
+
+    // int join(int processID, int *status);
+    private int handleJoin(int pid, int statusPointer) {
+        if (childProcessMap.containsKey(pid)) {
+            UserProcess childUserProcess = childProcessMap.get(pid);
+            // todo
+            childUserProcess.uThread.join();
+
+            childProcessMap.remove(pid);
+            // 被子进程唤醒之后
+            int exitStatus = childUserProcess.exitStatus;
+            // 写入指针指向处
+            // 写入指针指向处
+            writeVirtualMemory(statusPointer, Lib.bytesFromInt(exitStatus));
+            return childUserProcess.exitStatus == 0 ? 1 : 0;
+        }
+        return -1;
+    }
+
+
+
+
+    /*
+     * 文件相关的5个系统调用
+     */
+
+
+    /**
+     * 尝试打开命名磁盘文件，如果该文件不存在，则创建该文件，
+     *
+     * @return 可用于访问该文件的文件描述符
+     */
+    private int handleCreate(int namePointer) {
+        String name = charPointerToString(namePointer);
+        if (name == null) return -1;
+        return fileOperations.createFile(name);
+    }
+
+    private int handleOpen(int namePointer) {
+        String name = charPointerToString(namePointer);
+        if (name == null) return -1;
+        return fileOperations.openFile(name);
+    }
+
+    private int handleRead(int fileDescriptor, int bufferVAddress, int count) {
+        byte[] bytes = new byte[count];
+        int cnt = fileOperations.readFile(fileDescriptor, bytes, count);
+        if (cnt == -1) return -1;
+        // 再写到内存里
+        writeVirtualMemory(bufferVAddress, bytes, 0, cnt);
+        return cnt;
+    }
+
+    private int handleWrite(int fileDescriptor, int bufferVAddress, int count) {
+        byte[] bytes = new byte[count];
+        int cnt = readVirtualMemory(bufferVAddress, bytes);
+//        String s = new String(bytes, 0, cnt);
+        return fileOperations.writeFile(fileDescriptor, bytes, cnt);
+    }
+
+    private int handleClose(int fileDescriptor) {
+        return fileOperations.closeFile(fileDescriptor);
+    }
+
+    private int handleRemove(int namePointer) {
+        String name = charPointerToString(namePointer);
+        if (name == null) return -1;
+        return fileOperations.unlinkFile(name);
+    }
+
+
     private static final int
             syscallHalt = 0,
             syscallExit = 1,
@@ -355,7 +587,11 @@ public class UserProcess {
             syscallRead = 6,
             syscallWrite = 7,
             syscallClose = 8,
-            syscallUnlink = 9;
+            syscallUnlink = 9,
+            syscallMmap = 10,
+            syscallConnect = 11,
+            syscallAccept = 12,
+            syscallFork = 13;
 
     /**
      * Handle a syscall exception. Called by <tt>handleException()</tt>. The
@@ -387,9 +623,32 @@ public class UserProcess {
      */
     // todo 其他的系统调用
     public int handleSyscall(int syscall, int a0, int a1, int a2, int a3) {
+//        System.out.println("syscall : " + syscall);
         switch (syscall) {
             case syscallHalt:
                 return handleHalt();
+            case syscallExit:
+                return handleExit(a0);
+            case syscallExec:
+                return handleExec(a0, a1, a2);
+            case syscallJoin:
+                return handleJoin(a0, a1);
+
+            case syscallCreate:  // todo 下面几个几个文件读写相关的系统调用
+                return handleCreate(a0);
+            case syscallOpen:
+                return handleOpen(a0);
+            case syscallRead:
+                return handleRead(a0, a1, a2);
+            case syscallWrite:
+                return handleWrite(a0, a1, a2);
+            case syscallClose:
+                return handleClose(a0);
+            case syscallUnlink:
+                return handleRemove(a0);
+
+            case syscallFork:
+                return handleFork();
 
 
             default:
@@ -409,18 +668,28 @@ public class UserProcess {
      */
     public void handleException(int cause) {
         Processor processor = Machine.processor();
+//        System.out.println("cause " + cause);
 
         switch (cause) {
             case Processor.exceptionSyscall:
+                // Processor.regV0 中存储系统调用号
+                // Processor.regAX 存储系统调用参数
+                int syscall = processor.readRegister(Processor.regV0);
                 int result = handleSyscall(processor.readRegister(Processor.regV0),
                         processor.readRegister(Processor.regA0),
                         processor.readRegister(Processor.regA1),
                         processor.readRegister(Processor.regA2),
                         processor.readRegister(Processor.regA3)
                 );
+                // 将系统调用的结果写回寄存器
                 processor.writeRegister(Processor.regV0, result);
-                // todo 真实的机器应该是保存用户进程的PC,然后系统调用处理完
+                // todo 真实的机器应该是保存用户进程的PC, 然后系统调用处理完
                 processor.advancePC();
+                if (syscall == 13) {
+//                    System.out.println("to fork syscall");
+//                    KThread.finish(); // todo
+//                    System.out.println("#2 当前寄存器组为 ： " + Arrays.toString(Processor.currentRegisters()));
+                }
                 // todo start.s 中 syscall 后的 jump $31 与 process.advancePC(); 有何关系
                 break;
 
@@ -455,4 +724,20 @@ public class UserProcess {
 
     private static final int pageSize = Processor.pageSize;
     private static final char dbgProcess = 'a';
+
+    private int exitStatus = 0;
+
+    // associated UThread
+    private UThread uThread;
+
+    // 文件的操作实例
+    private final FileOperations fileOperations;
+
+    private int pid;
+
+    // pid 计数器
+    private static int pidCounter = 0;
+
+    private final Map<Integer, UserProcess> childProcessMap;
+
 }

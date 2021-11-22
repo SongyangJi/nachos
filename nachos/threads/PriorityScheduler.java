@@ -51,8 +51,7 @@ public class PriorityScheduler extends Scheduler {
     }
 
     public int getEffectivePriority(KThread thread) {
-//        Lib.assertTrue(Machine.interrupt().disabled()); todo
-
+        Lib.assertTrue(Machine.interrupt().disabled());
         return getThreadState(thread).getEffectivePriority();
     }
 

@@ -3,6 +3,9 @@
 package nachos.machine;
 
 import nachos.security.*;
+import nachos.threads.KThread;
+
+import java.util.Arrays;
 
 /**
  * The <tt>Processor</tt> class simulates a MIPS processor that supports a
@@ -23,10 +26,10 @@ public final class Processor {
     /**
      * Allocate a new MIPS processor, with the specified amount of memory.
      *
-     * @param    privilege encapsulates privileged access to the Nachos
-     * machine.
-     * @param    numPhysPages    the number of pages of physical memory to
-     * attach.
+     * @param privilege    encapsulates privileged access to the Nachos
+     *                     machine.
+     * @param numPhysPages the number of pages of physical memory to
+     *                     attach.
      */
     public Processor(Privilege privilege, int numPhysPages) {
         System.out.println("processor");
@@ -48,11 +51,16 @@ public final class Processor {
         // 模拟物理内存（注意是真实的物理内存条，不是虚拟内存地址空间）
         mainMemory = new byte[pageSize * numPhysPages];
 
+        /*
+         * 如果使用TLB，translations 代表 TLB；
+         * 否则，translations 代表页表
+         */
         if (usingTLB) {
             translations = new TranslationEntry[tlbSize];
             for (int i = 0; i < tlbSize; i++)
                 translations[i] = new TranslationEntry();
         } else {
+            // 虽然这里为null,但是 UserProcess 会将translations设置为自己的页表
             translations = null;
         }
     }
@@ -65,7 +73,7 @@ public final class Processor {
      * the CPU cause register will specify the cause of the exception (see the
      * <tt>exception<i>*</i></tt> constants).
      *
-     * @param    exceptionHandler    the kernel exception handler.
+     * @param exceptionHandler the kernel exception handler.
      */
     public void setExceptionHandler(Runnable exceptionHandler) {
         this.exceptionHandler = exceptionHandler;
@@ -99,6 +107,7 @@ public final class Processor {
             try {
                 inst.run();
             } catch (MipsException e) {
+//                e.printStackTrace();
                 e.handle();
             }
             // 每次执行用户代码的指令，时间前进
@@ -109,7 +118,7 @@ public final class Processor {
     /**
      * Read and return the contents of the specified CPU register.
      *
-     * @param    number    the register to read.
+     * @param number the register to read.
      * @return the value of the register.
      */
     public int readRegister(int number) {
@@ -121,8 +130,8 @@ public final class Processor {
     /**
      * Write the specified value into the specified CPU register.
      *
-     * @param    number    the register to write.
-     * @param    value    the value to write.
+     * @param number the register to write.
+     * @param value  the value to write.
      */
     public void writeRegister(int number, int value) {
         Lib.assertTrue(number >= 0 && number < numUserRegisters);
@@ -148,7 +157,7 @@ public final class Processor {
      * Using a method associated with the wrong address translation mechanism
      * will result in an assertion failure.
      *
-     * @return    <tt>true</tt> if this processor has a software-managed TLB.
+     * @return <tt>true</tt> if this processor has a software-managed TLB.
      */
     public boolean hasTLB() {
         return usingTLB;
@@ -170,7 +179,7 @@ public final class Processor {
      * the specified page table. The size of the current address space will be
      * determined from the length of the page table array.
      *
-     * @param    pageTable    the page table to use.
+     * @param pageTable the page table to use.
      */
     public void setPageTable(TranslationEntry[] pageTable) {
         Lib.assertTrue(!usingTLB);
@@ -192,7 +201,7 @@ public final class Processor {
     /**
      * Returns the specified TLB entry.
      *
-     * @param    number    the index into the TLB.
+     * @param number the index into the TLB.
      * @return the contents of the specified TLB entry.
      */
     public TranslationEntry readTLBEntry(int number) {
@@ -209,8 +218,8 @@ public final class Processor {
      * The TLB is fully associative, so the location of an entry within the TLB
      * does not affect anything.
      *
-     * @param    number    the index into the TLB.
-     * @param    entry    the new contents of the TLB entry.
+     * @param number the index into the TLB.
+     * @param entry  the new contents of the TLB entry.
      */
     public void writeTLBEntry(int number, TranslationEntry entry) {
         Lib.assertTrue(usingTLB);
@@ -242,11 +251,11 @@ public final class Processor {
     /**
      * Concatenate a page number and an offset into an address.
      *
-     * @param    page    the page number. Must be between <tt>0</tt> and
-     * <tt>(2<sup>32</sup> / pageSize) - 1</tt>.
-     * @param    offset    the offset within the page. Must be between <tt>0</tt>
-     * and
-     * <tt>pageSize - 1</tt>.
+     * @param page   the page number. Must be between <tt>0</tt> and
+     *               <tt>(2<sup>32</sup> / pageSize) - 1</tt>.
+     * @param offset the offset within the page. Must be between <tt>0</tt>
+     *               and
+     *               <tt>pageSize - 1</tt>.
      * @return a 32-bit address consisting of the specified page and offset.
      */
     public static int makeAddress(int page, int offset) {
@@ -259,7 +268,7 @@ public final class Processor {
     /**
      * Extract the page number component from a 32-bit address.
      *
-     * @param    address    the 32-bit address.
+     * @param address the 32-bit address.
      * @return the page number component of the address.
      */
     public static int pageFromAddress(int address) {
@@ -269,7 +278,7 @@ public final class Processor {
     /**
      * Extract the offset component from an address.
      *
-     * @param    address    the 32-bit address.
+     * @param address the 32-bit address.
      * @return the offset component of the address.
      */
     public static int offsetFromAddress(int address) {
@@ -286,15 +295,20 @@ public final class Processor {
      * valid, make sure a read-only page is not being written, make sure the
      * resulting physical page is valid, and then return the resulting physical
      * address.
+     * <p>
+     * 使用页表或 TLB 将虚拟地址转换为物理地址。
+     * 检查对齐，确保虚拟页面有效，确保没有写入只读页面，确保生成的物理页面有效，
+     * 然后返回生成的物理地址。
      *
-     * @param    vaddr    the virtual address to translate.
-     * @param    size    the size of the memory reference (must be 1, 2, or 4).
-     * @param    writing    <tt>true</tt> if the memory reference is a write.
+     * @param vaddr   the virtual address to translate.
+     * @param size    the size of the memory reference (must be 1, 2, or 4).
+     * @param writing <tt>true</tt> if the memory reference is a write.
      * @return the physical address.
-     * @exception MipsException    if a translation error occurred.
+     * @throws MipsException if a translation error occurred.
      */
     private int translate(int vaddr, int size, boolean writing)
             throws MipsException {
+        // 各种检测
         if (Lib.test(dbgProcessor))
             System.out.println("\ttranslate vaddr=0x" + Lib.toHexString(vaddr)
                     + (writing ? ", write" : ", read..."));
@@ -306,16 +320,28 @@ public final class Processor {
         }
 
         // calculate virtual page number and offset from the virtual address
+        // 计算虚拟地址对应的页号和页偏移
         int vpn = pageFromAddress(vaddr);
         int offset = offsetFromAddress(vaddr);
 
         TranslationEntry entry = null;
 
         // if not using a TLB, then the vpn is an index into the table
+        // 没有使用 TLB，translations就是页表 (实验2)
         if (!usingTLB) {
             if (translations == null || vpn >= translations.length ||
                     translations[vpn] == null ||
                     !translations[vpn].valid) {
+                System.out.println("translate .... ");
+                System.out.println(vaddr);
+                System.out.println(KThread.currentThread().getName());
+                System.out.println(translations == null);
+                System.out.println(Arrays.toString(translations));
+                System.out.println(vpn + " " + translations.length);
+                System.out.println(translations[vpn]);
+                System.out.println(translations[vpn].valid);
+                System.out.println("------------");
+
                 privilege.stats.numPageFaults++;
                 Lib.debug(dbgProcessor, "\t\tpage fault");
                 throw new MipsException(exceptionPageFault, vaddr);
@@ -324,7 +350,7 @@ public final class Processor {
             entry = translations[vpn];
         }
         // else, look through all TLB entries for matching vpn
-        else {
+        else { // todo project2 未使用到
             for (int i = 0; i < tlbSize; i++) {
                 if (translations[i].valid && translations[i].vpn == vpn) {
                     entry = translations[i];
@@ -337,7 +363,7 @@ public final class Processor {
                 throw new MipsException(exceptionTLBMiss, vaddr);
             }
         }
-
+        // 在做一些合法性检查
         // check if trying to write a read-only page
         if (entry.readOnly && writing) {
             Lib.debug(dbgProcessor, "\t\tread-only exception");
@@ -351,11 +377,13 @@ public final class Processor {
             throw new MipsException(exceptionBusError, vaddr);
         }
 
+        // 修改页表项(entry)的状态
         // set used and dirty bits as appropriate
         entry.used = true;
         if (writing)
             entry.dirty = true;
 
+        // 计算出物理地址
         int paddr = (ppn * pageSize) + offset;
 
         if (Lib.test(dbgProcessor))
@@ -367,10 +395,10 @@ public final class Processor {
      * Read </i>size</i> (1, 2, or 4) bytes of virtual memory at <i>vaddr</i>,
      * and return the result.
      *
-     * @param    vaddr    the virtual address to read from.
-     * @param    size    the number of bytes to read (1, 2, or 4).
+     * @param vaddr the virtual address to read from.
+     * @param size  the number of bytes to read (1, 2, or 4).
      * @return the value read.
-     * @exception MipsException    if a translation error occurred.
+     * @throws MipsException if a translation error occurred.
      */
     private int readMem(int vaddr, int size) throws MipsException {
         if (Lib.test(dbgProcessor))
@@ -378,7 +406,7 @@ public final class Processor {
                     + ", size=" + size);
 
         Lib.assertTrue(size == 1 || size == 2 || size == 4);
-
+//        System.out.println("read vaddr : " + vaddr);
         int value = Lib.bytesToInt(mainMemory, translate(vaddr, size, false),
                 size);
 
@@ -393,10 +421,10 @@ public final class Processor {
      * Write <i>value</i> to </i>size</i> (1, 2, or 4) bytes of virtual memory
      * starting at <i>vaddr</i>.
      *
-     * @param    vaddr    the virtual address to write to.
-     * @param    size    the number of bytes to write (1, 2, or 4).
-     * @param    value    the value to store.
-     * @exception MipsException    if a translation error occurred.
+     * @param vaddr the virtual address to write to.
+     * @param size  the number of bytes to write (1, 2, or 4).
+     * @param value the value to store.
+     * @throws MipsException if a translation error occurred.
      */
     private void writeMem(int vaddr, int size, int value)
             throws MipsException {
@@ -414,13 +442,13 @@ public final class Processor {
     /**
      * Complete the in progress delayed load and scheduled a new one.
      *
-     * @param    nextLoadTarget    the target register of the new load.
-     * @param    nextLoadValue    the value to be loaded into the new target.
-     * @param    nextLoadMask    the mask specifying which bits in the new
-     * target are to be overwritten. If a bit in
-     * <tt>nextLoadMask</tt> is 0, then the
-     * corresponding bit of register
-     * <tt>nextLoadTarget</tt> will not be written.
+     * @param nextLoadTarget the target register of the new load.
+     * @param nextLoadValue  the value to be loaded into the new target.
+     * @param nextLoadMask   the mask specifying which bits in the new
+     *                       target are to be overwritten. If a bit in
+     *                       <tt>nextLoadMask</tt> is 0, then the
+     *                       corresponding bit of register
+     *                       <tt>nextLoadTarget</tt> will not be written.
      */
     private void delayedLoad(int nextLoadTarget, int nextLoadValue,
                              int nextLoadMask) {
@@ -456,13 +484,16 @@ public final class Processor {
     /**
      * Transfer the contents of the nextPC register into the PC register, and
      * then write the nextPC register.
+     * 将nextPC寄存器的内容转移到PC寄存器中，然后写入nextPC寄存器。
      *
-     * @param    nextPC    the new value of the nextPC register.
+     * @param nextPC the new value of the nextPC register.
      */
     private void advancePC(int nextPC) {
         registers[regPC] = registers[regNextPC];
         registers[regNextPC] = nextPC;
     }
+
+    // 下面是存储的执行指令时的异常枚举
 
     /**
      * Caused by a syscall instruction.
@@ -500,7 +531,7 @@ public final class Processor {
     /**
      * The names of the CPU exceptions.
      */
-    public static final String exceptionNames[] = {
+    public static final String[] exceptionNames = {
             "syscall      ",
             "page fault   ",
             "TLB miss     ",
@@ -659,6 +690,7 @@ public final class Processor {
 
         // 处理中断（硬件功能）
         public void handle() {
+            // 将异常索引写入 异常原因索引寄存器
             writeRegister(regCause, cause);
 
             // 缺页错误
@@ -676,7 +708,7 @@ public final class Processor {
             if (!Machine.autoGrader().exceptionHandler(privilege))
                 return;
             // exceptionHandler 是硬件初始化由内核设置的,
-            // 此句将控制转移给内核
+            // 此代码将控制转移给内核
             exceptionHandler.run();
         }
 
@@ -704,6 +736,11 @@ public final class Processor {
                 System.out.print("PC=0x" + Lib.toHexString(registers[regPC])
                         + "\t");
             // 读内存
+            if (KThread.currentThread().getName().equals("test_fork.coff-fork")) {
+//                System.out.println("child vaddr " + registers[regPC]);
+            } else if (KThread.currentThread().getName().equals("test_fork.coff")) {
+//                System.out.println("father vaddr " + registers[regPC]);
+            }
             value = readMem(registers[regPC], 4);
         }
 
@@ -1019,6 +1056,7 @@ public final class Processor {
                     break;
 
                 case Mips.SYSCALL:
+                    // todo syscall
                     // 硬件发出中断，表示要进行系统调用
                     throw new MipsException(exceptionSyscall);
 
@@ -1399,4 +1437,22 @@ public final class Processor {
                 new Mips()
         };
     }
+
+    public static int[] currentRegisters() {
+        int[] registers = new int[Processor.numUserRegisters];
+        for (int i = 0; i < Processor.numUserRegisters; i++) {
+            registers[i] = Machine.processor().readRegister(i);
+        }
+        return registers;
+    }
+
+    public static void copy(int srcPpn, int destPpn) {
+        byte[] mainMemory = Machine.processor().mainMemory;
+        int src = srcPpn * pageSize;
+        int dest = destPpn * pageSize;
+        // 物理帧的复制
+
+        System.arraycopy(mainMemory, src, mainMemory, dest, pageSize);
+    }
+
 }

@@ -127,6 +127,7 @@ public class Communicator {
         @Override
         public void run() {
             for (int i = 0; i < N; i++) {
+                System.out.println("try to listen ... ");
                 System.out.println(KThread.currentThread().getName() + " hears " + communicator.listen());
                 delay();
             }
@@ -138,8 +139,8 @@ public class Communicator {
 
         Communicator communicator = new Communicator();
         for (int i = 0; i < 3; i++) {
-            new KThread(new Speaker(communicator, i)).setName("Speaker-" + i).fork();
             new KThread(new Listener(communicator, i)).setName("Listener-" + i).fork();
+            new KThread(new Speaker(communicator, i)).setName("Speaker-" + i).fork();
         }
 
         KThread.yield();
