@@ -68,4 +68,5 @@ name:				; \
 	SYSCALLSTUB(connect, syscallConnect)
 	SYSCALLSTUB(accept, syscallAccept)
 	SYSCALLSTUB(fork, syscallFork)
-
+	SYSCALLSTUB(malloc, syscallMalloc)
+	SYSCALLSTUB(free, syscallFree)

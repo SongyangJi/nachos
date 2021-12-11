@@ -143,7 +143,7 @@ public class CoffSection {
      * @return    <tt>true</tt> if this section contains initialized data in the
      * executable.
      */
-    public boolean isInitialzed() {
+    public boolean isInitialized() {
         return initialized;
     }
 

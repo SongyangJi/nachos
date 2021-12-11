@@ -26,6 +26,8 @@
 #define syscallConnect		11
 #define syscallAccept		12
 #define syscallFork         13
+#define syscallMalloc       14
+#define syscallFree         15
 
 /* Don't want the assembler to see C code, but start.s includes syscall.h. */
 #ifndef START_S
@@ -263,6 +265,18 @@ int accept(int port);
  * 成功时返回子进程的pid,否则返回 -1
  */
 int fork();
+
+
+/**
+ * 成功时，返回内存的起始地址
+ */
+void* malloc(int size);
+
+/**
+ * 释放动态申请的堆内存
+ */
+void free(void* ptr);
+
 
 #endif /* START_S */
 

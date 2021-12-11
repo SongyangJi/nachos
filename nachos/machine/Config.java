@@ -272,7 +272,7 @@ public final class Config {
         if (result == null)
             return defaultValue;
 
-        return result.booleanValue();
+        return result;
     }
 
     private static boolean loaded = false;

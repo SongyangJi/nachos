@@ -3,9 +3,10 @@
 package nachos.machine;
 
 import nachos.security.*;
-import nachos.threads.KThread;
+import nachos.vm.LruUsedFrameManager;
+import nachos.vm.VMKernel;
 
-import java.util.Arrays;
+import java.util.Random;
 
 /**
  * The <tt>Processor</tt> class simulates a MIPS processor that supports a
@@ -198,6 +199,32 @@ public final class Processor {
         return tlbSize;
     }
 
+
+    /**
+     * 刷新TLB
+     */
+    public void flushTLB() {
+        // todo 这里暂时处理的粗糙一些
+        for (int i = 0; i < tlbSize; i++) {
+            translations[i].valid = false;
+        }
+    }
+
+    Random random = new Random(0);
+
+    /**
+     * TLB的替换策略有很多, LRU、Round-robin、Random
+     * 这里暂时这样处理，先优先替换 valid == false的, 否则 随机挑一个
+     */
+    public int pickTLBEntry() {
+        for (int i = 0; i < tlbSize; i++) {
+            if (!translations[i].valid) {
+                return i;
+            }
+        }
+        return random.nextInt(tlbSize);
+    }
+
     /**
      * Returns the specified TLB entry.
      *
@@ -226,6 +253,20 @@ public final class Processor {
         Lib.assertTrue(number >= 0 && number < tlbSize);
 
         translations[number] = new TranslationEntry(entry);
+    }
+
+    /**
+     * 将某个物理帧对应的entry失效
+     *
+     * @param ppn 帧号
+     */
+    public void invalidTLBEntry(int ppn) {
+        for (int i = 0; i < tlbSize; i++) {
+            if (translations[i].ppn == ppn) {
+                translations[i].valid = false;
+                return;
+            }
+        }
     }
 
     /**
@@ -332,16 +373,6 @@ public final class Processor {
             if (translations == null || vpn >= translations.length ||
                     translations[vpn] == null ||
                     !translations[vpn].valid) {
-                System.out.println("translate .... ");
-                System.out.println(vaddr);
-                System.out.println(KThread.currentThread().getName());
-                System.out.println(translations == null);
-                System.out.println(Arrays.toString(translations));
-                System.out.println(vpn + " " + translations.length);
-                System.out.println(translations[vpn]);
-                System.out.println(translations[vpn].valid);
-                System.out.println("------------");
-
                 privilege.stats.numPageFaults++;
                 Lib.debug(dbgProcessor, "\t\tpage fault");
                 throw new MipsException(exceptionPageFault, vaddr);
@@ -350,7 +381,7 @@ public final class Processor {
             entry = translations[vpn];
         }
         // else, look through all TLB entries for matching vpn
-        else { // todo project2 未使用到
+        else { // todo project3 使用
             for (int i = 0; i < tlbSize; i++) {
                 if (translations[i].valid && translations[i].vpn == vpn) {
                     entry = translations[i];
@@ -363,9 +394,11 @@ public final class Processor {
                 throw new MipsException(exceptionTLBMiss, vaddr);
             }
         }
+
         // 在做一些合法性检查
         // check if trying to write a read-only page
         if (entry.readOnly && writing) {
+            System.out.println("to here vpn,ppn  " + vpn + " " + entry.ppn);
             Lib.debug(dbgProcessor, "\t\tread-only exception");
             throw new MipsException(exceptionReadOnly, vaddr);
         }
@@ -380,8 +413,17 @@ public final class Processor {
         // 修改页表项(entry)的状态
         // set used and dirty bits as appropriate
         entry.used = true;
-        if (writing)
+        if (writing) {
             entry.dirty = true;
+        }
+
+        // todo 触发 CoW
+        if (entry.cow && writing) {
+            throw new MipsException(exceptionCopyOnWrite, vaddr);
+        }
+
+        VMKernel.usedFrameManager.access(entry, writing);
+
 
         // 计算出物理地址
         int paddr = (ppn * pageSize) + offset;
@@ -489,6 +531,7 @@ public final class Processor {
      * @param nextPC the new value of the nextPC register.
      */
     private void advancePC(int nextPC) {
+//        System.out.println("to here advancePC()\n");
         registers[regPC] = registers[regNextPC];
         registers[regNextPC] = nextPC;
     }
@@ -528,6 +571,8 @@ public final class Processor {
      */
     public static final int exceptionIllegalInstruction = 7;
 
+    public static final int exceptionCopyOnWrite = 8;
+
     /**
      * The names of the CPU exceptions.
      */
@@ -539,7 +584,8 @@ public final class Processor {
             "bus error    ",
             "address error",
             "overflow     ",
-            "illegal inst "
+            "illegal inst ",
+            "copy on write",
     };
 
     /**
@@ -731,23 +777,20 @@ public final class Processor {
         }
 
         private void fetch() throws MipsException {
+//            System.out.println("fetch PC is " + registers[regPC]);
             if ((Lib.test(dbgDisassemble) && !Lib.test(dbgProcessor)) ||
                     Lib.test(dbgFullDisassemble))
                 System.out.print("PC=0x" + Lib.toHexString(registers[regPC])
                         + "\t");
-            // 读内存
-            if (KThread.currentThread().getName().equals("test_fork.coff-fork")) {
-//                System.out.println("child vaddr " + registers[regPC]);
-            } else if (KThread.currentThread().getName().equals("test_fork.coff")) {
-//                System.out.println("father vaddr " + registers[regPC]);
-            }
             value = readMem(registers[regPC], 4);
+//            System.out.println("fetch success");
         }
 
         /**
          * 根据 mips 的指令设计进行解码
          */
         private void decode() {
+//            System.out.println("decode()");
             op = Lib.extract(value, 26, 6);
             rs = Lib.extract(value, 21, 5);
             rt = Lib.extract(value, 16, 5);
@@ -963,6 +1006,7 @@ public final class Processor {
         }
 
         private void execute() throws MipsException {
+//            System.out.println("execute()");
             int value;
             int preserved;
 
@@ -1132,7 +1176,10 @@ public final class Processor {
 
                 default:
                     Lib.assertNotReached();
+                    break;
+
             }
+//            System.out.println("execute() success");
         }
 
         private void writeBack() throws MipsException {
@@ -1438,6 +1485,10 @@ public final class Processor {
         };
     }
 
+    public void incrPageFault() {
+        ++this.privilege.stats.numPageFaults;
+    }
+
     public static int[] currentRegisters() {
         int[] registers = new int[Processor.numUserRegisters];
         for (int i = 0; i < Processor.numUserRegisters; i++) {
@@ -1451,8 +1502,13 @@ public final class Processor {
         int src = srcPpn * pageSize;
         int dest = destPpn * pageSize;
         // 物理帧的复制
-
         System.arraycopy(mainMemory, src, mainMemory, dest, pageSize);
+    }
+
+    public static byte[] getOnePage(int ppn) {
+        byte[] bytes = new byte[pageSize];
+        System.arraycopy(Machine.processor().mainMemory, ppn * pageSize, bytes, 0, pageSize);
+        return bytes;
     }
 
 }

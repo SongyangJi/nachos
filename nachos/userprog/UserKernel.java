@@ -4,8 +4,8 @@ import nachos.machine.*;
 import nachos.threads.*;
 
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
-import java.util.TreeSet;
 
 /**
  * A kernel that can support multiple user processes.
@@ -136,36 +136,6 @@ public class UserKernel extends ThreadedKernel {
     private static Coff dummy1 = null;
 
 
-    // todo 同步访问
-    // 空闲帧列表
-    private static final TreeSet<Integer> freePhysicalPages;
 
-    static {
-        freePhysicalPages = new TreeSet<>();
-        int numPhysPages = Machine.processor().getNumPhysPages();
-        for (int i = 0; i < numPhysPages; i++) {
-            freePhysicalPages.add(i);
-        }
-    }
-
-    public static int numFreePhysicalPages() {
-        return freePhysicalPages.size();
-    }
-
-    public static List<Integer> allocatePhysicalPages(int numPages) {
-        if (freePhysicalPages.size() < numPages) {
-            return null;
-        }
-
-        List<Integer> list = new ArrayList<>();
-        for (int i = 0; i < numPages; i++) {
-            list.add(freePhysicalPages.pollFirst());
-        }
-        return list;
-    }
-
-    public static void freePhysicalPages(List<Integer> physicalPageNumberList) {
-        freePhysicalPages.addAll(physicalPageNumberList);
-    }
 
 }

@@ -94,15 +94,30 @@ public class StubFileSystem implements FileSystem {
             openCount++;
         }
 
+        // todo 原先的代码有问题
+//        private void getRandomAccessFile(File f, boolean truncate) {
+//            try {
+//                if (!truncate && !f.exists())
+//                    return;
+//
+//                file = new RandomAccessFile(f, "rw");
+//
+//                if (truncate)
+//                    file.setLength(0);
+//            } catch (IOException ignored) {
+//            }
+//        }
+
         private void getRandomAccessFile(File f, boolean truncate) {
             try {
-                if (!truncate && !f.exists())
-                    return;
-
-                file = new RandomAccessFile(f, "rw");
-
-                if (truncate)
-                    file.setLength(0);
+                if(f.exists()) {
+                    file = new RandomAccessFile(f, "rw");
+                } else {
+                    if(truncate) {
+                        file = new RandomAccessFile(f, "rw");
+                        file.setLength(0);
+                    }
+                }
             } catch (IOException ignored) {
             }
         }

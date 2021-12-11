@@ -46,6 +46,7 @@ public final class TranslationEntry {
         readOnly = entry.readOnly;
         used = entry.used;
         dirty = entry.dirty;
+        cow = entry.cow;
     }
 
     /**
@@ -87,6 +88,13 @@ public final class TranslationEntry {
      */
     public boolean dirty;
 
+
+    /**
+     * 父进程进程共享某一帧的标志，
+     * 此时写操作会触发 copy on write 的机制
+     */
+    public boolean cow = false;
+
     @Override
     public String toString() {
         return "TranslationEntry{" +
@@ -94,4 +102,5 @@ public final class TranslationEntry {
                 ", ppn=" + ppn +
                 '}';
     }
+
 }
